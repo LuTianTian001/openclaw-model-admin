@@ -72,6 +72,15 @@
     .status-dot.error { background: var(--claude-danger); }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .loading-icon { width: 14px; height: 14px; border: 2.5px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .seg-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid #f0f0ee; }
+    .seg-row + .seg-row { margin-top: 12px; padding-top: 12px; }
+    .seg-row .seg-label { font-size: 13px; font-weight: 700; color: var(--claude-muted); flex: 1; min-width: 120px; }
+    .seg-toggle { display: flex; background: rgba(0,0,0,0.05); border-radius: 10px; padding: 3px; gap: 3px; min-width: 132px; flex-shrink: 0; }
+    .seg-toggle .seg-btn { flex: 1; border: none; background: transparent; padding: 7px 10px; font-size: 13px; font-weight: 600; color: var(--claude-muted); border-radius: 8px; cursor: pointer; transition: background 0.2s, color 0.2s, transform 0.12s, box-shadow 0.2s; height: auto; min-height: 0; }
+    .seg-toggle .seg-btn.active { background: var(--claude-surface); color: var(--claude-text); box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .seg-toggle .seg-btn:active { transform: scale(0.96); }
+    button.ghost.pending-delete { border-color: var(--claude-danger) !important; color: var(--claude-danger) !important; background: #fff5f5 !important; font-weight: 700 !important; animation: segPulse 0.6s ease; }
+    @keyframes segPulse { from { box-shadow: 0 0 0 0 rgba(197,48,48,0.35); } to { box-shadow: 0 0 0 6px rgba(197,48,48,0); } }
   </style>
 </head>
 <body>
@@ -116,26 +125,26 @@
         <div class="route-card"><div class="route-title">备份顺位 2</div><div class="route-inputs"><select id="f2Provider"></select><div style="color:var(--claude-border)">/</div><select id="f2Model"></select></div></div>
         <div class="route-card">
           <div class="route-title">全局选项</div>
-          <div style="margin-top:0; display:flex; align-items:center; justify-content:space-between; padding-bottom:12px; border-bottom:1px solid #f0f0ee;">
-            <label style="font-size:13px; font-weight:700; color:var(--claude-muted)">展现推理过程</label>
-            <select id="reasoningDisplay" style="width:100px; height:32px; font-size:13px!important; padding:4px 10px;" title="全局统一；开启「下发到各会话」或保存并同步时写入各会话的 reasoningLevel">
-              <option value="off">关闭</option>
-              <option value="on">开启</option>
-            </select>
+          <div class="seg-row" style="margin-top:0;">
+            <span class="seg-label" title="全局统一；开启「下发到各会话」或应用并重启时写入各会话的 reasoningLevel">展现推理过程</span>
+            <div class="seg-toggle" id="seg-reasoningDisplay" data-value="off" role="group" aria-label="展现推理过程">
+              <button type="button" class="seg-btn active" data-val="off">关</button>
+              <button type="button" class="seg-btn" data-val="on">开</button>
+            </div>
           </div>
-          <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; padding-top:12px; border-top:1px solid #f0f0ee;">
-            <label style="font-size:13px; font-weight:700; color:var(--claude-muted)">提权模式 (Elevated)</label>
-            <select id="elevatedDefault" style="width:100px; height:32px; font-size:13px!important; padding:4px 10px;">
-              <option value="off">关闭</option>
-              <option value="full">开启</option>
-            </select>
+          <div class="seg-row">
+            <span class="seg-label">提权模式 (Elevated)</span>
+            <div class="seg-toggle" id="seg-elevatedDefault" data-value="off" role="group" aria-label="提权模式">
+              <button type="button" class="seg-btn active" data-val="off">关</button>
+              <button type="button" class="seg-btn" data-val="full">开</button>
+            </div>
           </div>
-          <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; padding-top:12px; border-top:1px solid #f0f0ee;">
-            <label style="font-size:13px; font-weight:700; color:var(--claude-muted)" title="开启：应用时同步提权/推理并清除会话思考覆盖；/think 可再写回">保存时下发全局选项到各会话</label>
-            <select id="applyToSessions" style="width:100px; height:32px; font-size:13px!important; padding:4px 10px;" title="开启：应用并重启时向各会话下发提权/推理，并清除 thinkingLevel。无论开关，都会把电报私聊行为同步到网页主会话（不删网页 modelOverride）">
-              <option value="on">开启</option>
-              <option value="off">关闭</option>
-            </select>
+          <div class="seg-row" style="border-bottom:none; padding-bottom:0;">
+            <span class="seg-label" title="开启：应用并重启时向各会话下发提权/推理，并清除 thinkingLevel。无论开关，都会把电报私聊行为同步到网页主会话">保存时下发全局选项到各会话</span>
+            <div class="seg-toggle" id="seg-applyToSessions" data-value="on" role="group" aria-label="保存时下发到各会话">
+              <button type="button" class="seg-btn" data-val="off">关</button>
+              <button type="button" class="seg-btn active" data-val="on">开</button>
+            </div>
           </div>
           <div id="runtimeInfo" style="margin-top:12px; font-size:12px; color:var(--claude-muted); line-height:1.6; background:#fafaf9; border:1px solid #ecebe6; border-radius:10px; padding:10px 12px; white-space:pre-line;">等待同步...</div>
         </div>
@@ -193,6 +202,8 @@
   </div>
   <script>
     let state = null;
+    let pendingDeleteRef = null;
+    let pendingDeleteTimer = null;
     function switchTab(t) { document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active')); const target = typeof t === 'string' ? document.getElementById(t) : t; const btn = document.querySelector(`[onclick*="${target.id}"]`); if(btn) btn.classList.add('active'); target.classList.add('active'); }
     function thinkingTierOf(m) {
       if (!m) return 'off';
@@ -313,6 +324,8 @@
     
     function renderFromState(s) {
       state = s;
+      pendingDeleteRef = null;
+      clearTimeout(pendingDeleteTimer);
       const plh = document.getElementById('pageLoadHint');
       if (plh) plh.style.display = 'none';
       const alertBar = document.getElementById('topAlertBar');
@@ -332,8 +345,8 @@
       document.getElementById('statPrimary').textContent = (state.primary && state.primary.includes('/')) ? state.primary.split('/')[1] : (state.primary || '无');
       document.getElementById('statFallbacks').textContent = (state.fallbacks || []).length;
       document.getElementById('statProviders').textContent = (state.providers || []).length;
-      if(state.reasoningDisplay === 'on' || state.reasoningDisplay === 'off') document.getElementById('reasoningDisplay').value = state.reasoningDisplay;
-      if(state.elevatedDefault) document.getElementById('elevatedDefault').value = state.elevatedDefault;
+      if (state.reasoningDisplay === 'on' || state.reasoningDisplay === 'off') segSet('seg-reasoningDisplay', state.reasoningDisplay);
+      segSet('seg-elevatedDefault', state.elevatedDefault === 'full' ? 'full' : 'off');
       const runtimeRows = [];
       runtimeRows.push((state.gatewayActive ? '网关状态: 运行中' : '网关状态: 离线') + ' | ' + (state.configValid ? '配置校验: 通过' : '配置校验: 失败'));
       const mr = state.mainSessionRoute;
@@ -385,7 +398,7 @@
       document.getElementById('providerSections').innerHTML = groupedModels().map(g => {
         const pData = state.providers.find(p => p.name === g.provider);
         const isOAuth = pData && pData.auth === 'oauth';
-        return `<details class="collapsible"><summary><span>${escHtml(g.provider)}</span><span style="font-weight:400; font-size:11px; color:var(--claude-muted)">${g.models.length} 模型</span></summary><div class="collapsible-content">${g.models.map(m => `<div class="model-item"><div><strong>${escHtml(m.name || m.id)}<span class="think-suffix"> · 思考 ${escHtml(thinkingTierOf(m))}</span></strong>${m.ref===state.primary?'<span class="badge active">默认</span>':''}<br><small style="color:var(--claude-muted); font-size:12px;">${escHtml(m.ref)}</small></div><div style="display:flex; gap:8px;">${isOAuth ? '' : `<button class="ghost" style="height:36px; padding:0 12px; font-size:13px;" onclick="prefillModel('${m.ref}')">配置</button>`}<button class="ghost" style="height:36px; padding:0 12px; font-size:13px; color:var(--claude-danger)" id="delBtn_${m.ref.replace('/','_').replace('.','_')}" onclick="deleteModel('${m.ref}')">移除</button></div></div>`).join('')}</div></details>`;
+        return `<details class="collapsible"><summary><span>${escHtml(g.provider)}</span><span style="font-weight:400; font-size:11px; color:var(--claude-muted)">${g.models.length} 模型</span></summary><div class="collapsible-content">${g.models.map(m => `<div class="model-item"><div><strong>${escHtml(m.name || m.id)}<span class="think-suffix"> · 思考 ${escHtml(thinkingTierOf(m))}</span></strong>${m.ref===state.primary?'<span class="badge active">默认</span>':''}<br><small style="color:var(--claude-muted); font-size:12px;">${escHtml(m.ref)}</small></div><div style="display:flex; gap:8px;">${isOAuth ? '' : `<button class="ghost" style="height:36px; padding:0 12px; font-size:13px;" onclick="prefillModel(${JSON.stringify(m.ref)})">配置</button>`}<button class="ghost" style="height:36px; padding:0 12px; font-size:13px; color:var(--claude-danger)" id="delBtn_${m.ref.replace(/\//g,'_').replace(/\./g,'_')}" onclick="deleteModel(${JSON.stringify(m.ref)})">移除</button></div></div>`).join('')}</div></details>`;
       }).join('') || '<p style="text-align:center; color:var(--claude-muted)">暂无配置</p>';
     }
 
@@ -424,9 +437,9 @@
       try {
         const p = document.getElementById('pModel').value;
         const f = [document.getElementById('f1Model').value, document.getElementById('f2Model').value].filter(v => v && v!==p);
-        const e = document.getElementById('elevatedDefault').value;
-        const applyToSessions = document.getElementById('applyToSessions').value === 'on';
-        const rd = document.getElementById('reasoningDisplay').value;
+        const e = segGet('seg-elevatedDefault');
+        const applyToSessions = segGet('seg-applyToSessions') === 'on';
+        const rd = segGet('seg-reasoningDisplay');
         const pThinkOn = document.getElementById('pThinkingEnabled').value === 'on';
         const pThinkVal = document.getElementById('pThinkingValue').value;
         await apiReq('/api/selection', { primary:p, fallbacks:f, elevatedDefault:e, reasoningDisplay: rd, applyToSessions, clearModelOverrides: false, primaryThinkingEnabled: pThinkOn, primaryThinkingValue: pThinkVal });
@@ -476,17 +489,48 @@
         const d = await apiReq('/api/model', b);
         await apiReq('/api/restart', {});
         await refresh();
-        let msg = '已部署';
-        if (d.meta && d.meta.thinkingSyncedToPrimary) {
-          msg = '已部署 · 思考已同步到默认主模型 ' + d.meta.thinkingSyncedToPrimary;
-        }
-        setLoading('addBtn', false, { success: msg }); cancelEdit();
+        setLoading('addBtn', false, { success: '已部署' }); cancelEdit();
       } catch(e) { setLoading('addBtn', false, { error: true }); }
     }
     
+    function delBtnIdForRef(r) {
+      return 'delBtn_' + r.replace(/\//g, '_').replace(/\./g, '_');
+    }
+
     async function deleteModel(r) {
-      if (!confirm(`确认彻底移除 ${r}?`)) return;
-      const btnId = 'delBtn_' + r.replace('/', '_').replace('.', '_');
+      const btnId = delBtnIdForRef(r);
+      const btn = document.getElementById(btnId);
+      if (!btn) return;
+      if (pendingDeleteRef !== r) {
+        pendingDeleteRef = r;
+        clearTimeout(pendingDeleteTimer);
+        document.querySelectorAll('button.pending-delete').forEach((b) => {
+          if (b.dataset.delBack != null) {
+            b.innerHTML = b.dataset.delBack;
+            delete b.dataset.delBack;
+            b.classList.remove('pending-delete');
+          }
+        });
+        btn.dataset.delBack = btn.innerHTML;
+        btn.textContent = '再点确认移除';
+        btn.classList.add('pending-delete');
+        pendingDeleteTimer = setTimeout(() => {
+          if (pendingDeleteRef === r && btn.dataset.delBack != null) {
+            pendingDeleteRef = null;
+            btn.innerHTML = btn.dataset.delBack;
+            delete btn.dataset.delBack;
+            btn.classList.remove('pending-delete');
+          }
+        }, 6000);
+        return;
+      }
+      pendingDeleteRef = null;
+      clearTimeout(pendingDeleteTimer);
+      if (btn.dataset.delBack != null) {
+        btn.innerHTML = btn.dataset.delBack;
+        delete btn.dataset.delBack;
+      }
+      btn.classList.remove('pending-delete');
       setLoading(btnId, true);
       try {
         await apiReq('/api/model/delete', { ref: r, deleteProviderIfEmpty: true });
@@ -520,6 +564,27 @@
         setLoading('probeBtn', false);
       } catch(e) { setLoading('probeBtn', false, { error: true }); }
     }
+    function segSet(id, value) {
+      const togg = document.getElementById(id);
+      if (!togg) return;
+      togg.setAttribute('data-value', value);
+      togg.querySelectorAll('.seg-btn').forEach((x) => x.classList.toggle('active', x.getAttribute('data-val') === value));
+    }
+    function segGet(id) {
+      const el = document.getElementById(id);
+      return el ? (el.getAttribute('data-value') || '') : '';
+    }
+    document.addEventListener('click', (ev) => {
+      const segBtn = ev.target.closest('.seg-toggle .seg-btn');
+      if (!segBtn) return;
+      const togg = segBtn.closest('.seg-toggle');
+      if (!togg) return;
+      const v = segBtn.getAttribute('data-val');
+      if (v == null) return;
+      togg.setAttribute('data-value', v);
+      togg.querySelectorAll('.seg-btn').forEach((x) => x.classList.toggle('active', x.getAttribute('data-val') === v));
+    });
+
     ['p', 'f1', 'f2'].forEach(initListeners);
     document.getElementById('pModel').addEventListener('change', syncPrimaryThinkingFromSelection);
     document.getElementById('pThinkingEnabled').addEventListener('change', syncPrimaryThinkingRow);
