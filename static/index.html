@@ -562,7 +562,7 @@
 
     async function deleteWholeProvider(name) {
       if (!name) return;
-      if (!confirm(`确认删除整个供应商「${name}」及其下全部相关配置？\n\n将删除：models.providers 中该供应商整块（含其下所有模型与内联密钥）、agents 下所有以「${name}/」开头的 models 覆盖、auth.profiles 中绑定该 provider 的项；若该供应商块里写了指向 ~/.openclaw/credentials/ 下某文件的路径，保存成功后会尝试删除这些文件；并清理 sessions.json 里指向该供应商的模型覆盖。默认/备用路由会按剩余模型自动重选。\n\n此操作不可恢复。`)) return;
+      if (!confirm(`确认删除整个供应商「${name}」及其下全部相关配置？\n\n将删除：models.providers 中该供应商整块（含其下所有模型与内联密钥）、agents 下所有以「${name}/」开头的 models 覆盖、auth.profiles 中绑定该 provider 的项；若该供应商块里写了指向 ~/.openclaw/credentials/ 下某文件的路径，保存成功后会尝试删除仅属于该供应商的文件（不会删 Telegram 等系统自带凭据，也不会删仍被配置其它位置引用的路径）；并清理 sessions.json 里指向该供应商的模型覆盖。默认/备用路由会按剩余模型自动重选。\n\n此操作不可恢复。`)) return;
       const btnId = 'delProvBtn_' + name.replace(/\//g, '_').replace(/\./g, '_');
       setLoading(btnId, true);
       try {

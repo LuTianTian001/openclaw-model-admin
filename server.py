@@ -56,6 +56,12 @@ PORT = int(os.environ.get("OPENCLAW_MODEL_ADMIN_PORT", "8765"))
 MAIN_SESSION_KEY = "agent:main:main"
 
 BUILTIN_PROVIDERS = ["openai-codex", "github-copilot"]
+# 删除自定义供应商时：绝不自动删除这些文件名（OpenClaw 自带渠道等系统凭据）
+PROTECTED_CREDENTIAL_BASENAMES = frozenset(
+    {
+        "telegram-bot-token",
+    }
+)
 ALLOWED_MODEL_ENTRY_KEYS = {"alias", "params", "streaming"}
 THINKING_PARAM_MAX_LEN = 64
 ADMIN_PREFS_PATH = _path_from_env("OPENCLAW_MODEL_ADMIN_PREFS_PATH", ROOT / "admin-prefs.json")
@@ -1021,8 +1027,37 @@ def _credential_file_paths_in_provider_block(p: dict) -> list[Path]:
     return uniq
 
 
-def _unlink_provider_credential_files(paths: list[Path]) -> list[str]:
-    """仅删除位于 openclaw/credentials/ 下的文件；配置已成功保存后再调用。"""
+def _resolved_paths_under_credentials_referenced_anywhere(config: dict) -> frozenset[str]:
+    """当前完整 openclaw.json 中仍被任意字段引用的、credentials/ 下已存在文件的绝对路径集合。"""
+    refs: set[str] = set()
+    try:
+        home = _openclaw_home_dir()
+        cred_root = (home / "credentials").resolve()
+    except OSError:
+        return frozenset()
+
+    def walk(o: object) -> None:
+        if isinstance(o, dict):
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for x in o:
+                walk(x)
+        elif isinstance(o, str) and _looks_like_filesystem_path_str(o):
+            raw = Path(o).expanduser()
+            try:
+                cand = raw.resolve() if raw.is_absolute() else (home / o.lstrip("/")).resolve()
+            except OSError:
+                return
+            if cand.is_file() and cred_root in cand.parents:
+                refs.add(str(cand))
+
+    walk(config)
+    return frozenset(refs)
+
+
+def _unlink_provider_credential_files(paths: list[Path], remaining_config: dict) -> list[str]:
+    """仅删除位于 openclaw/credentials/ 下、且删除供应商后配置中已不再引用、且非系统保护文件名的路径。"""
     removed: list[str] = []
     try:
         cred_root = (_openclaw_home_dir() / "credentials").resolve()
@@ -1030,6 +1065,7 @@ def _unlink_provider_credential_files(paths: list[Path]) -> list[str]:
         return removed
     if not cred_root.is_dir():
         return removed
+    still_used = _resolved_paths_under_credentials_referenced_anywhere(remaining_config)
     for p in paths:
         try:
             r = p.resolve()
@@ -1038,6 +1074,10 @@ def _unlink_provider_credential_files(paths: list[Path]) -> list[str]:
         if cred_root not in r.parents:
             continue
         if not r.is_file():
+            continue
+        if r.name in PROTECTED_CREDENTIAL_BASENAMES:
+            continue
+        if str(r) in still_used:
             continue
         try:
             r.unlink()
@@ -1329,7 +1369,7 @@ class Handler(BaseHTTPRequestHandler):
                 removed_cred_files: list[str] = []
                 if isinstance(provider_snap, dict):
                     cpaths = _credential_file_paths_in_provider_block(provider_snap)
-                    removed_cred_files = _unlink_provider_credential_files(cpaths)
+                    removed_cred_files = _unlink_provider_credential_files(cpaths, config)
                 sess_clean = _clear_sessions_overrides_for_provider(p_name)
                 cleared_pv = clear_session_thinking_levels()
                 self._send_json(
