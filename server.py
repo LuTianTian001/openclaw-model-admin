@@ -1030,6 +1030,46 @@ class Handler(BaseHTTPRequestHandler):
                 save_config_with_validation(config)
                 cleared_del = clear_session_thinking_levels()
                 self._send_json({"ok": True, "state": build_state(), "meta": {"sessionThinkingCleared": cleared_del}})
+            elif path == "/api/provider/delete":
+                config = read_config()
+                p_name = (payload.get("provider") or "").strip()
+                if not p_name:
+                    raise ValueError("缺少供应商名称 provider")
+                if p_name in BUILTIN_PROVIDERS:
+                    raise ValueError("内置供应商不可删除")
+                provs = config.get("models", {}).get("providers", {})
+                if not isinstance(provs, dict) or p_name not in provs:
+                    raise ValueError(f"供应商不存在或未在配置中: {p_name}")
+                del provs[p_name]
+                prefix = p_name + "/"
+                am = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("models", {})
+                if isinstance(am, dict):
+                    for ref in list(am.keys()):
+                        if isinstance(ref, str) and ref.startswith(prefix):
+                            del am[ref]
+                model_block = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("model", {})
+                if isinstance(model_block, dict):
+                    pr = model_block.get("primary")
+                    pr = pr.strip() if isinstance(pr, str) else ""
+                    if pr.startswith(prefix):
+                        model_block["primary"] = ""
+                    fbs = model_block.get("fallbacks", [])
+                    if isinstance(fbs, list):
+                        model_block["fallbacks"] = [
+                            x for x in fbs if not (isinstance(x, str) and x.strip().startswith(prefix))
+                        ]
+                save_meta = save_config_with_validation(config)
+                cleared_pv = clear_session_thinking_levels()
+                self._send_json(
+                    {
+                        "ok": True,
+                        "state": build_state(),
+                        "meta": {
+                            "sessionThinkingCleared": cleared_pv,
+                            "migrations": save_meta.get("migrations", []),
+                        },
+                    }
+                )
             elif path == "/api/probe":
                 state = build_state()
                 results = {

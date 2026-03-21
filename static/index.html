@@ -395,7 +395,9 @@
       document.getElementById('providerSections').innerHTML = groupedModels().map(g => {
         const pData = state.providers.find(p => p.name === g.provider);
         const isOAuth = pData && pData.auth === 'oauth';
-        return `<details class="collapsible"><summary><span>${escHtml(g.provider)}</span><span style="font-weight:400; font-size:11px; color:var(--claude-muted)">${g.models.length} 模型</span></summary><div class="collapsible-content"><div style="margin-bottom:10px;"><button type="button" class="ghost" style="height:36px; padding:0 14px; font-size:13px;" onclick='reuseProviderFromLibrary(${JSON.stringify(g.provider)})'>复用此供应商再加模型</button></div>${g.models.map(m => `<div class="model-item"><div><strong>${escHtml(m.name || m.id)}<span class="think-suffix"> · 思考 ${escHtml(thinkingTierOf(m))}</span></strong>${m.ref===state.primary?'<span class="badge active">默认</span>':''}<br><small style="color:var(--claude-muted); font-size:12px;">${escHtml(m.ref)}</small></div><div style="display:flex; gap:8px;">${isOAuth ? '' : `<button class="ghost" style="height:36px; padding:0 12px; font-size:13px;" onclick="prefillModel('${m.ref}')">配置</button>`}<button class="ghost" style="height:36px; padding:0 12px; font-size:13px; color:var(--claude-danger)" id="delBtn_${m.ref.replace('/','_').replace('.','_')}" onclick="deleteModel('${m.ref}')">移除</button></div></div>`).join('')}</div></details>`;
+        const builtinProv = g.provider === 'openai-codex' || g.provider === 'github-copilot';
+        const provBar = `<div style="margin-bottom:10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;"><button type="button" class="ghost" style="height:36px; padding:0 14px; font-size:13px;" onclick='reuseProviderFromLibrary(${JSON.stringify(g.provider)})'>复用此供应商再加模型</button>${builtinProv ? '' : `<button type="button" class="ghost" style="height:36px; padding:0 14px; font-size:13px; color:var(--claude-danger); border-color:#feb2b2;" id="delProvBtn_${g.provider.replace(/\//g,'_').replace(/\./g,'_')}" onclick='deleteWholeProvider(${JSON.stringify(g.provider)})'>删除整个供应商</button>`}</div>`;
+        return `<details class="collapsible"><summary><span>${escHtml(g.provider)}</span><span style="font-weight:400; font-size:11px; color:var(--claude-muted)">${g.models.length} 模型</span></summary><div class="collapsible-content">${provBar}${g.models.map(m => `<div class="model-item"><div><strong>${escHtml(m.name || m.id)}<span class="think-suffix"> · 思考 ${escHtml(thinkingTierOf(m))}</span></strong>${m.ref===state.primary?'<span class="badge active">默认</span>':''}<br><small style="color:var(--claude-muted); font-size:12px;">${escHtml(m.ref)}</small></div><div style="display:flex; gap:8px;">${isOAuth ? '' : `<button class="ghost" style="height:36px; padding:0 12px; font-size:13px;" onclick="prefillModel('${m.ref}')">配置</button>`}<button class="ghost" style="height:36px; padding:0 12px; font-size:13px; color:var(--claude-danger)" id="delBtn_${m.ref.replace('/','_').replace('.','_')}" onclick="deleteModel('${m.ref}')">移除</button></div></div>`).join('')}</div></details>`;
       }).join('') || '<p style="text-align:center; color:var(--claude-muted)">暂无配置</p>';
       refreshReuseProviderSelect();
     }
@@ -553,6 +555,20 @@
         await apiReq('/api/restart', {});
         await refresh();
         flashBtn(btnId, { success: '已删' });
+      } catch (e) {
+        setLoading(btnId, false, { error: true });
+      }
+    }
+
+    async function deleteWholeProvider(name) {
+      if (!name) return;
+      if (!confirm(`确认删除整个供应商「${name}」及其下所有模型？\n\n若默认模型或备用顺位指向该供应商，将被清空。此操作不可恢复。`)) return;
+      const btnId = 'delProvBtn_' + name.replace(/\//g, '_').replace(/\./g, '_');
+      setLoading(btnId, true);
+      try {
+        await apiReq('/api/provider/delete', { provider: name });
+        await apiReq('/api/restart', {});
+        await refresh();
       } catch (e) {
         setLoading(btnId, false, { error: true });
       }
