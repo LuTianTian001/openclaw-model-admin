@@ -56,6 +56,46 @@ PORT = int(os.environ.get("OPENCLAW_MODEL_ADMIN_PORT", "8765"))
 MAIN_SESSION_KEY = "agent:main:main"
 
 BUILTIN_PROVIDERS = ["openai-codex", "github-copilot"]
+
+
+def normalize_provider_id(name: str) -> str:
+    """自定义供应商在配置中必须小写；与内置列表比对时忽略大小写。"""
+    s = (name or "").strip() if isinstance(name, str) else ""
+    if not s:
+        return s
+    low = s.lower()
+    if low in BUILTIN_PROVIDERS:
+        return low
+    return low
+
+
+def normalize_model_ref_provider_lower(ref: str) -> str:
+    """将 provider/model 中供应商段转为规范形式（内置归一为小写名，自定义为小写）。"""
+    if not isinstance(ref, str) or "/" not in ref:
+        return ref
+    p, _, mid = ref.partition("/")
+    mid = mid.strip()
+    p = normalize_provider_id(p)
+    if not p or not mid:
+        return ref
+    return f"{p}/{mid}"
+
+
+def resolve_provider_key_in_provs(provs: object, p_name: str) -> str | None:
+    """在 models.providers 中解析供应商键（兼容尚未迁移完的大小写）。"""
+    if not isinstance(provs, dict) or not isinstance(p_name, str):
+        return None
+    want = normalize_provider_id(p_name.strip())
+    if not want:
+        return None
+    if want in provs:
+        return want
+    for k in provs:
+        if isinstance(k, str) and k.strip().lower() == want:
+            return k
+    return None
+
+
 # 删除自定义供应商时：绝不自动删除这些文件名（OpenClaw 自带渠道等系统凭据）
 PROTECTED_CREDENTIAL_BASENAMES = frozenset(
     {
@@ -162,8 +202,202 @@ def migrate_reasoning_effort_off_model_definitions(config):
     return migrations
 
 
+def _lowercase_provider_segment_in_ref_keys_under(obj: object) -> int:
+    """递归 dict：键名形如 provider/model 时，将供应商段规范为小写（自定义全小写，内置归一）。"""
+    n = 0
+    if isinstance(obj, dict):
+        for k, v in list(obj.items()):
+            if isinstance(v, dict):
+                n += _lowercase_provider_segment_in_ref_keys_under(v)
+            elif isinstance(v, list):
+                for x in v:
+                    n += _lowercase_provider_segment_in_ref_keys_under(x)
+        for k in list(obj.keys()):
+            if not isinstance(k, str) or "/" not in k or k not in obj:
+                continue
+            nk = normalize_model_ref_provider_lower(k)
+            if nk == k:
+                continue
+            if nk in obj:
+                del obj[k]
+                n += 1
+                continue
+            obj[nk] = obj.pop(k)
+            n += 1
+    elif isinstance(obj, list):
+        for x in obj:
+            n += _lowercase_provider_segment_in_ref_keys_under(x)
+    return n
+
+
+def _lowercase_auth_profile_provider_keys(auth: dict) -> int:
+    """auth.profiles 的键名中供应商段改为小写（如 VX001:foo -> vx001:foo）。"""
+    profs = auth.get("profiles")
+    if not isinstance(profs, dict):
+        return 0
+    n = 0
+    for key in list(profs.keys()):
+        if not isinstance(key, str):
+            continue
+        if ":" in key:
+            left, sep, rest = key.partition(":")
+            nl = normalize_provider_id(left)
+            nk = nl + sep + rest if nl != left else key
+        else:
+            nl = normalize_provider_id(key)
+            nk = nl if nl != key else key
+        if nk == key or key not in profs:
+            continue
+        if nk in profs:
+            del profs[key]
+            n += 1
+            continue
+        profs[nk] = profs.pop(key)
+        n += 1
+    return n
+
+
+def migrate_custom_provider_names_to_lowercase(config: dict) -> list[str]:
+    """自定义供应商键、agents 内 ref 键、auth profile 键：供应商名一律小写（保存时自动迁移）。"""
+    migrations: list[str] = []
+    m = config.get("models")
+    provs = m.get("providers") if isinstance(m, dict) else None
+    if isinstance(provs, dict):
+        for ok in list(provs.keys()):
+            if not isinstance(ok, str) or not ok.strip():
+                continue
+            nk = ok.strip().lower()
+            if nk in BUILTIN_PROVIDERS:
+                continue
+            if ok == nk:
+                continue
+            if nk in provs:
+                migrations.append(
+                    f"无法将 models.providers 的 {ok!r} 改为小写：已存在 {nk!r}，请手动合并后保存"
+                )
+                continue
+            provs[nk] = provs.pop(ok)
+            migrations.append(f"models.providers: {ok!r} -> {nk!r}")
+    defs = (config.get("agents") or {}).get("defaults")
+    if isinstance(defs, dict):
+        am = defs.get("models")
+        if isinstance(am, dict):
+            new_am: dict = {}
+            for ref, ent in list(am.items()):
+                if not isinstance(ref, str):
+                    new_am[ref] = ent
+                    continue
+                nref = normalize_model_ref_provider_lower(ref)
+                if nref != ref:
+                    migrations.append(f"agents.defaults.models: {ref!r} -> {nref!r}")
+                if nref in new_am and isinstance(new_am[nref], dict) and isinstance(ent, dict):
+                    merged = dict(new_am[nref])
+                    merged.update(ent)
+                    new_am[nref] = merged
+                else:
+                    new_am[nref] = ent
+            defs["models"] = new_am
+        mb = defs.get("model")
+        if isinstance(mb, dict):
+            pr = mb.get("primary")
+            if isinstance(pr, str) and "/" in pr:
+                npr = normalize_model_ref_provider_lower(pr)
+                if npr != pr:
+                    migrations.append(f"agents.defaults.model.primary: {pr!r} -> {npr!r}")
+                    mb["primary"] = npr
+            fbs = mb.get("fallbacks")
+            if isinstance(fbs, list):
+                nlist = []
+                for x in fbs:
+                    if isinstance(x, str) and "/" in x:
+                        nx = normalize_model_ref_provider_lower(x)
+                        if nx != x:
+                            migrations.append(f"agents.defaults.model.fallback: {x!r} -> {nx!r}")
+                        nlist.append(nx)
+                    else:
+                        nlist.append(x)
+                mb["fallbacks"] = nlist
+    ag = config.get("agents")
+    if isinstance(ag, dict):
+        c = _lowercase_provider_segment_in_ref_keys_under(ag)
+        if c:
+            migrations.append(f"agents 子树: {c} 处 ref 键已小写化供应商名")
+    auth = config.get("auth")
+    if isinstance(auth, dict):
+        c = _lowercase_auth_profile_provider_keys(auth)
+        if c:
+            migrations.append(f"auth.profiles: {c} 个键已小写化供应商段")
+    for path in _iter_agent_models_json_paths():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        provs = data.get("providers")
+        if not isinstance(provs, dict):
+            continue
+        touched = False
+        for ok in list(provs.keys()):
+            if not isinstance(ok, str) or not ok.strip():
+                continue
+            nk = ok.strip().lower()
+            if nk in BUILTIN_PROVIDERS:
+                continue
+            if ok == nk:
+                continue
+            if nk in provs:
+                migrations.append(f"无法小写化 {path.name} 中 {ok!r}：已存在 {nk!r}")
+                continue
+            provs[nk] = provs.pop(ok)
+            touched = True
+            migrations.append(f"{path.name}: models.providers {ok!r} -> {nk!r}")
+        if touched:
+            try:
+                path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            except OSError as e:
+                migrations.append(f"{path.name} 写入失败: {e}")
+    return migrations
+
+
+def normalize_sessions_provider_overrides_lowercase() -> dict:
+    """sessions.json：将非内置的 providerOverride 规范为小写，与会话外配置一致。"""
+    if not SESSION_STORE_PATH.exists():
+        return {"updated": 0, "exists": False}
+    try:
+        store = json.loads(SESSION_STORE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {"updated": 0, "exists": True, "error": "parse_failed"}
+    if not isinstance(store, dict):
+        return {"updated": 0, "exists": True, "error": "not_object"}
+    updated = 0
+    for raw in store.values():
+        if not isinstance(raw, dict):
+            continue
+        po = raw.get("providerOverride")
+        if not isinstance(po, str) or not po.strip():
+            continue
+        ps = po.strip()
+        low = ps.lower()
+        if low in BUILTIN_PROVIDERS:
+            if ps != low:
+                raw["providerOverride"] = low
+                updated += 1
+            continue
+        if ps != low:
+            raw["providerOverride"] = low
+            updated += 1
+    if updated > 0:
+        try:
+            SESSION_STORE_PATH.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except OSError:
+            return {"updated": 0, "exists": True, "error": "write_failed"}
+    return {"updated": updated, "exists": True}
+
+
 def write_config(config):
-    migrations = normalize_model_overrides(config)
+    migrations = migrate_custom_provider_names_to_lowercase(config)
+    migrations.extend(normalize_model_overrides(config))
     migrations.extend(migrate_reasoning_effort_off_model_definitions(config))
     ag = config.get("agents")
     if isinstance(ag, dict):
@@ -256,7 +490,8 @@ def save_config_with_validation(config):
         brief = "；".join(validation["issues"][:3]) if validation["issues"] else (validation["raw"] or "未知错误")
         raise ValueError(f"配置校验失败，已自动回滚：{brief}")
     _prime_cli_validate_cache(validation)
-    return {"migrations": migrations, "validation": validation}
+    sess_norm = normalize_sessions_provider_overrides_lowercase()
+    return {"migrations": migrations, "validation": validation, "sessionProviderNormalize": sess_norm}
 
 def run_command(args, timeout=5):
     try:
@@ -382,7 +617,10 @@ def thinking_from_agents_defaults(config: dict, model_ref: str) -> str:
     am = (config.get("agents") or {}).get("defaults", {}).get("models") or {}
     if not isinstance(am, dict):
         return "off"
-    entry = am.get(model_ref)
+    r0 = model_ref.strip()
+    entry = am.get(r0)
+    if not isinstance(entry, dict):
+        entry = am.get(normalize_model_ref_provider_lower(r0))
     if not isinstance(entry, dict):
         return "off"
     params = entry.get("params")
@@ -757,10 +995,11 @@ def _thinking_value_for_params(tv: object) -> str:
 def _set_agent_model_thinking(config: dict, ref_key: str, thinking_str: str) -> None:
     """仅更新 agents.defaults.models.<ref>.params.thinking（保留该 ref 上其它 params）。"""
     models = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("models", {})
-    ent = models.setdefault(ref_key, {})
+    key = normalize_model_ref_provider_lower(ref_key.strip())
+    ent = models.setdefault(key, {})
     if not isinstance(ent, dict):
         ent = {}
-        models[ref_key] = ent
+        models[key] = ent
     pr = dict(ent.get("params") or {}) if isinstance(ent.get("params"), dict) else {}
     pr["thinking"] = thinking_str
     pr.pop("reasoningEffort", None)
@@ -936,15 +1175,16 @@ def _clear_sessions_overrides_for_provider(p_name: str) -> dict:
         po = po.strip() if isinstance(po, str) else ""
         mo = raw.get("modelOverride")
         mo = mo.strip() if isinstance(mo, str) else ""
-        if po == p_name:
+        po_n = normalize_provider_id(po) if po else ""
+        p_norm = normalize_provider_id(p_name)
+        if po_n and po_n == p_norm:
             raw.pop("providerOverride", None)
             raw.pop("modelOverride", None)
             changed = True
         elif mo:
-            if mo.startswith(prefix):
-                raw.pop("modelOverride", None)
-                changed = True
-            elif "/" in mo and mo.split("/", 1)[0].strip() == p_name:
+            if mo.startswith(prefix) or (
+                "/" in mo and normalize_provider_id(mo.split("/", 1)[0]) == p_norm
+            ):
                 raw.pop("modelOverride", None)
                 changed = True
         if changed:
@@ -973,18 +1213,20 @@ def _iter_agent_models_json_paths() -> list[Path]:
 
 
 def _provider_in_agent_models_json(p_name: str) -> bool:
+    want = normalize_provider_id(p_name)
     for path in _iter_agent_models_json_paths():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             continue
         provs = data.get("providers") if isinstance(data, dict) else None
-        if isinstance(provs, dict) and p_name in provs:
+        if isinstance(provs, dict) and resolve_provider_key_in_provs(provs, want):
             return True
     return False
 
 
 def _provider_block_from_agent_models_json(p_name: str) -> dict | None:
+    want = normalize_provider_id(p_name)
     for path in _iter_agent_models_json_paths():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -992,7 +1234,8 @@ def _provider_block_from_agent_models_json(p_name: str) -> dict | None:
             continue
         provs = data.get("providers") if isinstance(data, dict) else None
         if isinstance(provs, dict):
-            blk = provs.get(p_name)
+            pk = resolve_provider_key_in_provs(provs, want)
+            blk = provs.get(pk) if pk else None
             if isinstance(blk, dict):
                 return copy.deepcopy(blk)
     return None
@@ -1001,6 +1244,7 @@ def _provider_block_from_agent_models_json(p_name: str) -> dict | None:
 def _remove_provider_from_agent_models_json_files(p_name: str) -> list[str]:
     """从各 agent 的 models.json 中移除同名 providers 键（与 openclaw.json 删除保持一致）。"""
     edited: list[str] = []
+    want = normalize_provider_id(p_name)
     for path in _iter_agent_models_json_paths():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -1009,9 +1253,12 @@ def _remove_provider_from_agent_models_json_files(p_name: str) -> list[str]:
         if not isinstance(data, dict):
             continue
         provs = data.get("providers")
-        if not isinstance(provs, dict) or p_name not in provs:
+        if not isinstance(provs, dict):
             continue
-        del provs[p_name]
+        pk = resolve_provider_key_in_provs(provs, want)
+        if not pk:
+            continue
+        del provs[pk]
         try:
             path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             edited.append(str(path))
@@ -1175,6 +1422,8 @@ def build_state():
             ref = f"{p_name}/{m['id']}"
             seen_refs.add(ref)
             m_entry = configured_models.get(ref)
+            if not isinstance(m_entry, dict):
+                m_entry = configured_models.get(normalize_model_ref_provider_lower(ref))
             m_entry = m_entry if isinstance(m_entry, dict) else {}
             m_params = m_entry.get("params", {}) if isinstance(m_entry.get("params"), dict) else {}
             th = _thinking_str_from_params_raw(m_params.get("thinking"))
@@ -1282,8 +1531,20 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/selection":
                 config = read_config()
                 agents = config.setdefault("agents", {}).setdefault("defaults", {})
-                agents.setdefault("model", {})["primary"] = payload.get("primary", "")
-                agents["model"]["fallbacks"] = payload.get("fallbacks", [])
+                praw = payload.get("primary", "")
+                praw = praw.strip() if isinstance(praw, str) else ""
+                agents.setdefault("model", {})["primary"] = (
+                    normalize_model_ref_provider_lower(praw) if praw and "/" in praw else praw
+                )
+                fbl = payload.get("fallbacks", [])
+                if not isinstance(fbl, list):
+                    fbl = []
+                agents["model"]["fallbacks"] = [
+                    normalize_model_ref_provider_lower(x.strip())
+                    if isinstance(x, str) and "/" in x.strip()
+                    else x
+                    for x in fbl
+                ]
                 agents.pop("thinkingDefault", None)
                 if "elevatedDefault" in payload:
                     agents["elevatedDefault"] = payload["elevatedDefault"]
@@ -1291,6 +1552,8 @@ class Handler(BaseHTTPRequestHandler):
                     write_admin_prefs(reasoningDisplay=payload["reasoningDisplay"])
                 selection_extra_meta: dict = {}
                 primary_sel = (payload.get("primary") or "").strip() if isinstance(payload.get("primary"), str) else ""
+                if primary_sel and "/" in primary_sel:
+                    primary_sel = normalize_model_ref_provider_lower(primary_sel)
                 if primary_sel and "/" in primary_sel and "primaryThinkingEnabled" in payload:
                     if payload.get("primaryThinkingEnabled") is True:
                         _set_agent_model_thinking(config, primary_sel, _thinking_value_for_params(payload.get("primaryThinkingValue", "")))
@@ -1326,7 +1589,13 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError(meta.get("error") or "对齐失败")
                 self._send_json({"ok": True, "state": build_state(), "meta": {"webTelegramSync": meta}})
             elif path == "/api/model":
-                config = read_config(); p_name, m_id = payload.get("provider", "").strip(), payload.get("modelId", "").strip()
+                config = read_config()
+                raw_pv = payload.get("provider", "")
+                raw_pv = raw_pv.strip() if isinstance(raw_pv, str) else ""
+                p_name = normalize_provider_id(raw_pv)
+                m_id = payload.get("modelId", "").strip() if isinstance(payload.get("modelId"), str) else ""
+                if not m_id:
+                    raise ValueError("缺少 modelId")
                 if p_name not in BUILTIN_PROVIDERS:
                     p = config.setdefault("models", {}).setdefault("providers", {}).setdefault(p_name, {"models": []})
                     p["baseUrl"], p["api"], p["auth"] = payload["baseUrl"], payload["api"], payload["auth"]
@@ -1338,11 +1607,12 @@ class Handler(BaseHTTPRequestHandler):
                     # 勿写入 reasoningEffort：OpenClaw ModelDefinitionSchema 为 strict，会校验失败
                     new_m = {"id": m_id, "name": payload.get("modelName") or m_id, "reasoning": prev_reasoning, "input": payload.get("inputs", ["text"]), "contextWindow": int(payload.get("contextWindow", 200000)), "maxTokens": int(payload.get("maxTokens", 8192))}
                     p["models"] = [m for m in p["models"] if m["id"] != m_id] + [new_m]
-                ref = f"{p_name}/{m_id}"
-                entry = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("models", {}).setdefault(ref, {})
+                ref = normalize_model_ref_provider_lower(f"{p_name}/{m_id}")
+                models_map = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("models", {})
+                entry = models_map.setdefault(ref, {})
                 if not isinstance(entry, dict):
                     entry = {}
-                    config["agents"]["defaults"]["models"][ref] = entry
+                    models_map[ref] = entry
                 params = dict(entry.get("params") or {}) if isinstance(entry.get("params"), dict) else {}
                 # 模型思考：关须写 params.thinking="off"；若删掉该键，OpenClaw 会对 reasoning:true 的模型回落为 low
                 if "thinkingEnabled" in payload:
@@ -1379,28 +1649,52 @@ class Handler(BaseHTTPRequestHandler):
                 meta_model["sessionThinkingCleared"] = cleared
                 self._send_json({"ok": True, "state": build_state(), "meta": meta_model})
             elif path == "/api/model/delete":
-                config = read_config(); ref = payload.get("ref"); p_name, m_id = ref.split("/", 1)
+                config = read_config()
+                ref = payload.get("ref")
+                if not isinstance(ref, str) or "/" not in ref:
+                    raise ValueError("无效 ref")
+                p_name, m_id = ref.split("/", 1)
+                p_name, m_id = p_name.strip(), m_id.strip()
+                provs_del = config.get("models", {}).get("providers", {})
+                pk = resolve_provider_key_in_provs(provs_del, p_name) if isinstance(provs_del, dict) else None
+                if pk:
+                    p_name = pk
+                ref = normalize_model_ref_provider_lower(f"{p_name}/{m_id}")
                 if p_name in config.get("models", {}).get("providers", {}):
                     p = config["models"]["providers"][p_name]
                     p["models"] = [m for m in p.get("models", []) if m["id"] != m_id]
-                    if not p["models"]: del config["models"]["providers"][p_name]
-                if ref in config.get("agents", {}).get("defaults", {}).get("models", {}): del config["agents"]["defaults"]["models"][ref]
+                    if not p["models"]:
+                        del config["models"]["providers"][p_name]
+                am_del = config.get("agents", {}).get("defaults", {}).get("models", {})
+                if isinstance(am_del, dict):
+                    if ref in am_del:
+                        del am_del[ref]
+                    else:
+                        for k in list(am_del.keys()):
+                            if (
+                                isinstance(k, str)
+                                and normalize_model_ref_provider_lower(k) == ref
+                            ):
+                                del am_del[k]
+                                break
                 save_config_with_validation(config)
                 cleared_del = clear_session_thinking_levels()
                 self._send_json({"ok": True, "state": build_state(), "meta": {"sessionThinkingCleared": cleared_del}})
             elif path == "/api/provider/delete":
                 config = read_config()
-                p_name = (payload.get("provider") or "").strip()
-                if not p_name:
+                p_raw = (payload.get("provider") or "").strip()
+                if not p_raw:
                     raise ValueError("缺少供应商名称")
-                if p_name in BUILTIN_PROVIDERS:
+                p_try = normalize_provider_id(p_raw)
+                if p_try in BUILTIN_PROVIDERS:
                     raise ValueError("内置供应商不可删除")
                 provs = config.setdefault("models", {}).setdefault("providers", {})
                 if not isinstance(provs, dict):
                     provs = {}
                     config["models"]["providers"] = provs
+                p_name = resolve_provider_key_in_provs(provs, p_try) or p_try
                 prefix = p_name + "/"
-                if p_name not in provs and not _provider_in_agent_models_json(p_name):
+                if p_name not in provs and not _provider_in_agent_models_json(p_try):
                     raise ValueError("未找到该供应商")
                 provider_snap = None
                 if p_name in provs and isinstance(provs.get(p_name), dict):

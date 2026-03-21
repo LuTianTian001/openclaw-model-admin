@@ -158,7 +158,7 @@
             <small style="display:block; margin-top:6px; font-size:11px; color:var(--claude-muted); line-height:1.45;">同一供应商加新型号时：先在此选择供应商，再只填「模型 ID」「显示名」即可点保存。</small>
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <div class="form-group"><label>名称</label><input id="provider"></div>
+            <div class="form-group"><label title="保存时会自动转为小写，与 openclaw.json / 会话一致">名称（小写）</label><input id="provider" placeholder="仅小写，如 vx001"></div>
             <div class="form-group"><label>地址</label><input id="baseUrl" oninput="autoDetectApiType(this.value)"></div>
           </div>
           <div class="form-group"><label>密钥</label><input id="apiKey" type="password" placeholder="留空则不更新"></div>
