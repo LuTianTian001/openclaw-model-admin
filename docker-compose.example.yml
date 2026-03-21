@@ -1,0 +1,13 @@
+# 复制为 docker-compose.yml 后修改卷路径；须保证 openclaw.json 与 sessions.json 在容器内可读写。
+services:
+  openclaw-model-admin:
+    build: .
+    ports:
+      - "8765:8765"
+    environment:
+      OPENCLAW_CONFIG_PATH: /data/openclaw.json
+      OPENCLAW_SESSIONS_PATH: /data/sessions/sessions.json
+      # OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE: "1"
+    volumes:
+      - /path/on/host/openclaw.json:/data/openclaw.json
+      - /path/on/host/agents/main/sessions/sessions.json:/data/sessions/sessions.json

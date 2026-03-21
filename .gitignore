@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*.log
+.env
+admin-prefs.json
+*.bak
+sessions.json.bak.*
+.idea/
+.vscode/
