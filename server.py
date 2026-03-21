@@ -1377,7 +1377,7 @@ class Handler(BaseHTTPRequestHandler):
                 new_primary_raw = payload.get("primary", "")
                 new_primary_s = new_primary_raw.strip() if isinstance(new_primary_raw, str) else ""
 
-                preserve_tg = payload.get("preserveTelegramDirectModel", True)
+                preserve_tg = payload.get("preserveTelegramDirectModel", False)
                 if isinstance(preserve_tg, str):
                     preserve_tg = preserve_tg.strip().lower() in ("1", "true", "yes", "on")
                 preserve_tg = bool(preserve_tg)

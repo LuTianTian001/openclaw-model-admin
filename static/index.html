@@ -94,7 +94,7 @@
     </div>
     <div id="tab-routing" class="tab-content active">
       <div class="routing-container">
-        <p style="font-size:12px; color:var(--claude-muted); line-height:1.55; margin:0 0 14px 0; padding:11px 14px; background:#fafaf9; border-radius:10px; border:1px solid var(--claude-border);"><strong>策略：</strong><strong>思考（Think）</strong>只跟你在管理端为<strong>各模型</strong>配置的 <code>agents.defaults.models[&lt;ref&gt;].params.thinking</code> 走；每次<strong>应用并重启</strong>会<strong>清除所有会话的 thinkingLevel</strong>，电报与网页都按当前选用模型的配置生效。<strong>下方「全局主模型」</strong>写入 <code>agents.defaults.model.primary</code>：<strong>所有未单独设置模型覆盖的渠道</strong>（含未用过 <code>/models</code> 的电报私聊）都会跟它走，不是只改网页。<strong>提权、推理过程展示、队列、exec</strong>等：网页主会话与<strong>最近活跃的 Telegram 私聊</strong>对齐（不抄思考、不删网页 <code>modelOverride</code>）。下方预览两路会话。</p>
+        <p style="font-size:12px; color:var(--claude-muted); line-height:1.55; margin:0 0 14px 0; padding:11px 14px; background:#fafaf9; border-radius:10px; border:1px solid var(--claude-border);"><strong>策略：</strong><strong>思考（Think）</strong>只跟你在管理端为<strong>各模型</strong>配置的 <code>agents.defaults.models[&lt;ref&gt;].params.thinking</code> 走；每次<strong>应用并重启</strong>会<strong>清除所有会话的 thinkingLevel</strong>，电报与网页都按当前选用模型的配置生效。<strong>下方「全局主模型」</strong>写入 <code>agents.defaults.model.primary</code>：<strong>仅当某渠道/会话尚未自己选过模型</strong>（无 <code>providerOverride</code>/<code>modelOverride</code> 等）时才会跟全局默认走；<strong>已在该渠道选过模型的，任何时候改默认都不应动它的选择。</strong><strong>提权、推理过程展示、队列、exec</strong>等：网页主会话与<strong>最近活跃的 Telegram 私聊</strong>对齐（不抄思考、不删网页 <code>modelOverride</code>）。下方预览两路会话。</p>
         <div class="route-card primary">
           <div class="route-title">全局主模型</div>
           <div class="route-inputs"><select id="pProvider"></select><div style="color:var(--claude-border)">/</div><select id="pModel"></select></div>
@@ -131,10 +131,10 @@
             </select>
           </div>
           <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; padding-top:12px; border-top:1px solid #f0f0ee;">
-            <label style="font-size:13px; font-weight:700; color:var(--claude-muted)" title="电报私聊若从未设置过模型覆盖，修改全局主模型时会把电报也切到新模型。开启此项时：在写入新 primary 之前，把「保存前」的主模型写入该私聊的 providerOverride/modelOverride，电报继续用旧模型；若希望电报跟新全局主模型一致请关闭。">保持电报私聊模型（不随本次全局主模型变更）</label>
+            <label style="font-size:13px; font-weight:700; color:var(--claude-muted)" title="与「未选过才跟默认」相反：仅当你明确希望电报私聊继续用保存前的全局主模型、而不跟新默认时，才临时开启。平时请保持关闭。">高级：固定电报私聊模型（不跟本次新默认）</label>
             <select id="preserveTelegramDirectModel" style="width:100px; height:32px; font-size:13px!important; padding:4px 10px;">
-              <option value="on" selected>开启</option>
-              <option value="off">关闭</option>
+              <option value="on">开启</option>
+              <option value="off" selected>关闭</option>
             </select>
           </div>
           <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; padding-top:12px; border-top:1px solid #f0f0ee;">
