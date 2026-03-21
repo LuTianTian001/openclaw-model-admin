@@ -14,6 +14,8 @@ BRANCH="${BRANCH:-main}"
 # 1=git（默认），0=从 GitHub archive 下载 tar.gz（仅需 curl 或 wget）
 USE_GIT="${USE_GIT:-1}"
 SKIP_OPENCLAW_CHECK="${SKIP_OPENCLAW_CHECK:-0}"
+# 1=首次无 .env 时复制 .env.example（可改为 0 关闭）
+INSTALL_COPY_ENV="${INSTALL_COPY_ENV:-1}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -120,5 +122,11 @@ fi
 chmod +x start.sh 2>/dev/null || true
 chmod +x install.sh 2>/dev/null || true
 
+if [[ "$INSTALL_COPY_ENV" == "1" ]] && [[ ! -f .env ]] && [[ -f .env.example ]]; then
+  cp .env.example .env
+  echo "[install] 已复制 .env.example -> .env（可按需编辑；说明见 操作手册.md）"
+fi
+
+echo "[install] 部署/排障全文: 操作手册.md 或 https://github.com/$REPO/blob/$BRANCH/操作手册.md"
 echo "[install] 启动 http://127.0.0.1:${OPENCLAW_MODEL_ADMIN_PORT:-8765}"
 exec ./start.sh

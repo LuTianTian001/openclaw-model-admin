@@ -4,6 +4,10 @@
 
 **仅 GNU/Linux**；脚本为 `bash`，网关状态/端口回退依赖 **`systemctl`、`ss`**（无 systemd 时用环境变量里的自定义重启命令，见下表）。
 
+### 详细操作手册（部署、Docker、systemd、FAQ）
+
+一键能覆盖的由 **`install.sh` / `start.sh`** 处理；**一键做不到的**（用户权限、防火墙、Docker 里访问宿主机、自定义重启命令等）在手册里写了**原因与具体处理步骤**：请阅读 **[操作手册.md](./操作手册.md)**。
+
 ---
 
 ## 安全
@@ -33,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/
 curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | USE_GIT=0 bash
 ```
 
-数据不在 `~/.openclaw`：在安装目录建 **`.env`**（`start.sh` 会自动加载），设 `OPENCLAW_HOME` 或 `OPENCLAW_CONFIG_PATH`。其它变量见下表或 **`.env.example`**。
+数据不在 `~/.openclaw`：在安装目录编辑 **`.env`**（`start.sh` 会自动加载；一键安装若检测到无 `.env` 会从 **`.env.example`** 复制一份模板）。变量说明见下表、**`.env.example`** 与 **操作手册 §5、§10**。
 
 手动：
 
@@ -44,7 +48,9 @@ cd openclaw-model-admin && chmod +x start.sh && ./start.sh
 
 浏览器：`http://127.0.0.1:8765`（默认监听 `0.0.0.0`）。
 
-**systemd 常驻**：参考仓库内 **`openclaw-model-admin.service.example`**，改 `User`、`WorkingDirectory`、`OPENCLAW_HOME` 后 `systemctl enable --now`。
+**常见坑（一键解决不了，见操作手册有步骤）**：① 面板用户与网关用户不一致 → 读写错目录；② Docker 里把网关填成 `127.0.0.1` → 应填宿主机/服务名可达地址；③ 容器内无 `openclaw` → 需 `SKIP_VALIDATE` 或镜像内装 CLI。
+
+**systemd 常驻**：参考 **`openclaw-model-admin.service.example`** 与 **操作手册 §8**。
 
 ---
 
