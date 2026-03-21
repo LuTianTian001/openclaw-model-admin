@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 仅面向 Linux；依赖与 README 中的 systemd/ss 等假设一致。
+# Linux；见 README。
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Linux" ]]; then

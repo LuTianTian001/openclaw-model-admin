@@ -55,15 +55,13 @@ resolve_default_config() {
 
 CFG="$(resolve_default_config)"
 if [[ ! -f "$CFG" ]]; then
-  echo "[install] 警告: 未找到 OpenClaw 配置文件: $CFG"
-  echo "        若数据不在 ~/.openclaw，请在启动前导出 OPENCLAW_HOME 或 OPENCLAW_CONFIG_PATH（可写入安装目录下的 .env）。"
+  echo "[install] 未找到 $CFG（数据不在 ~/.openclaw 时在 .env 写 OPENCLAW_HOME 或 OPENCLAW_CONFIG_PATH）"
 else
-  echo "[install] 已检测到配置: $CFG"
+  echo "[install] 配置: $CFG"
 fi
 
 if [[ "$SKIP_OPENCLAW_CHECK" != "1" ]] && ! command -v openclaw >/dev/null 2>&1; then
-  echo "[install] 警告: PATH 中未找到 openclaw，保存配置时「校验」将失败。"
-  echo "        请安装 OpenClaw CLI，或在 .env 中设置 OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE=1（仅建议测试环境）。"
+  echo "[install] 未找到 openclaw（需校验则装 CLI；否则 .env 设 OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE=1）"
 fi
 
 sync_from_archive() {
@@ -85,7 +83,7 @@ sync_from_archive() {
     # 不使用 --delete，避免删掉本机 .env、admin-prefs.json 等未入仓文件
     rsync -a --exclude='.env' --exclude='admin-prefs.json' "$src/" "$INSTALL_DIR/"
   else
-    echo "[install] 未找到 rsync，使用 cp -a（不会删除 INSTALL_DIR 中已删除的上游文件）"
+    echo "[install] 无 rsync，使用 cp"
     ( shopt -s dotglob 2>/dev/null || true; cp -a "$src"/* "$INSTALL_DIR/" 2>/dev/null || true )
     for f in "$src"/.[!.]* "$src"/..?*; do
       [[ -e "$f" ]] || continue
@@ -105,7 +103,7 @@ if [[ "$USE_GIT" == "1" ]]; then
     git fetch origin "$BRANCH" 2>/dev/null || true
     git checkout "$BRANCH" 2>/dev/null || true
     git pull --ff-only origin "$BRANCH" 2>/dev/null || {
-      echo "[install] git pull 失败，可尝试 USE_GIT=0 强制用源码包覆盖（会保留 .env）"
+      echo "[install] git pull 失败（可试 USE_GIT=0）"
       exit 1
     }
   else
@@ -122,6 +120,5 @@ fi
 chmod +x start.sh 2>/dev/null || true
 chmod +x install.sh 2>/dev/null || true
 
-echo "[install] 默认配置目录: \${OPENCLAW_HOME:-~/.openclaw}，详见 README「困难与对策」。"
-echo "[install] 启动: http://127.0.0.1:${OPENCLAW_MODEL_ADMIN_PORT:-8765}"
+echo "[install] 启动 http://127.0.0.1:${OPENCLAW_MODEL_ADMIN_PORT:-8765}"
 exec ./start.sh
