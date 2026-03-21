@@ -455,93 +455,6 @@ def pick_telegram_direct_session_key(store: dict) -> str | None:
     return max(td, key=lambda k: int((store[k] or {}).get("updatedAt") or 0))
 
 
-def _parse_provider_model_ref(ref: str) -> tuple[str, str] | None:
-    s = (ref or "").strip()
-    if "/" not in s:
-        return None
-    prov, mid = s.split("/", 1)
-    prov, mid = prov.strip(), mid.strip()
-    if not prov or not mid:
-        return None
-    return prov, mid
-
-
-def preserve_telegram_direct_model_on_primary_change(
-    old_primary: str,
-    new_primary: str,
-    enabled: bool,
-) -> dict:
-    """
-    保存 agents.defaults.model.primary 时：若电报私聊会话尚未设置 providerOverride/modelOverride，
-    它会一直跟随全局 primary；用户只想改网页/PocketClaw 时常误以为「电报被改了」。
-    在 enabled 时把「变更前」的 primary 写入该会话覆盖，使电报继续用旧主模型。
-    """
-    meta: dict = {"pinned": False}
-    if not enabled:
-        meta["reason"] = "disabled"
-        return meta
-    op = (old_primary or "").strip() if isinstance(old_primary, str) else ""
-    np = (new_primary or "").strip() if isinstance(new_primary, str) else ""
-    if not op or "/" not in op:
-        meta["reason"] = "noOldPrimaryRef"
-        return meta
-    if op == np:
-        meta["reason"] = "primaryUnchanged"
-        return meta
-    parsed_pin = _parse_provider_model_ref(op)
-    if not parsed_pin:
-        meta["reason"] = "invalidOldPrimaryRef"
-        return meta
-    pin_prov, pin_mid = parsed_pin
-    if not SESSION_STORE_PATH.exists():
-        meta["reason"] = "noSessionsFile"
-        return meta
-    try:
-        store = json.loads(SESSION_STORE_PATH.read_text(encoding="utf-8"))
-    except Exception as e:
-        meta["reason"] = f"readError:{e}"
-        return meta
-    if not isinstance(store, dict):
-        meta["reason"] = "sessionsNotObject"
-        return meta
-    tg_key = pick_telegram_direct_session_key(store)
-    if not tg_key:
-        meta["reason"] = "noTelegramDirectSession"
-        return meta
-    raw = store.get(tg_key)
-    if not isinstance(raw, dict):
-        meta["reason"] = "invalidTelegramEntry"
-        return meta
-    po = raw.get("providerOverride") if isinstance(raw.get("providerOverride"), str) else ""
-    mo = raw.get("modelOverride") if isinstance(raw.get("modelOverride"), str) else ""
-    if po.strip() or mo.strip():
-        meta["reason"] = "telegramAlreadyHasModelOverride"
-        return meta
-    raw["providerOverride"] = pin_prov
-    raw["modelOverride"] = pin_mid
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_path = SESSION_STORE_PATH.parent / f"sessions.json.bak.preserve-tg-{stamp}"
-    try:
-        shutil.copy2(SESSION_STORE_PATH, backup_path)
-    except Exception as e:
-        meta["reason"] = f"backupFailed:{e}"
-        return meta
-    try:
-        SESSION_STORE_PATH.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    except Exception as e:
-        meta["reason"] = f"writeFailed:{e}"
-        try:
-            shutil.copy2(backup_path, SESSION_STORE_PATH)
-        except Exception:
-            pass
-        return meta
-    meta["pinned"] = True
-    meta["sessionKey"] = tg_key
-    meta["pinnedRef"] = op
-    meta["backupPath"] = str(backup_path)
-    return meta
-
-
 def sync_web_session_from_telegram_direct(source_session_key: str | None = None) -> dict:
     """
     直接写 sessions.json：把电报私聊上的提权/推理展示/队列/exec 等与网页主会话对齐。
@@ -1368,25 +1281,6 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/selection":
                 config = read_config()
-                old_mb = (config.get("agents") or {}).get("defaults", {}).get("model")
-                old_primary_s = (
-                    old_mb.get("primary", "").strip()
-                    if isinstance(old_mb, dict) and isinstance(old_mb.get("primary"), str)
-                    else ""
-                )
-                new_primary_raw = payload.get("primary", "")
-                new_primary_s = new_primary_raw.strip() if isinstance(new_primary_raw, str) else ""
-
-                preserve_tg = payload.get("preserveTelegramDirectModel", False)
-                if isinstance(preserve_tg, str):
-                    preserve_tg = preserve_tg.strip().lower() in ("1", "true", "yes", "on")
-                preserve_tg = bool(preserve_tg)
-                telegram_preserve_meta = preserve_telegram_direct_model_on_primary_change(
-                    old_primary_s,
-                    new_primary_s,
-                    preserve_tg,
-                )
-
                 agents = config.setdefault("agents", {}).setdefault("defaults", {})
                 agents.setdefault("model", {})["primary"] = payload.get("primary", "")
                 agents["model"]["fallbacks"] = payload.get("fallbacks", [])
@@ -1395,7 +1289,7 @@ class Handler(BaseHTTPRequestHandler):
                     agents["elevatedDefault"] = payload["elevatedDefault"]
                 if "reasoningDisplay" in payload and payload.get("reasoningDisplay") in ("on", "off"):
                     write_admin_prefs(reasoningDisplay=payload["reasoningDisplay"])
-                selection_extra_meta: dict = {"telegramDirectPreserve": telegram_preserve_meta}
+                selection_extra_meta: dict = {}
                 primary_sel = (payload.get("primary") or "").strip() if isinstance(payload.get("primary"), str) else ""
                 if primary_sel and "/" in primary_sel and "primaryThinkingEnabled" in payload:
                     if payload.get("primaryThinkingEnabled") is True:

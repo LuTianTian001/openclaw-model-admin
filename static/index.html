@@ -131,13 +131,6 @@
             </select>
           </div>
           <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; padding-top:12px; border-top:1px solid #f0f0ee;">
-            <label style="font-size:13px; font-weight:700; color:var(--claude-muted)" title="与「未选过才跟默认」相反：仅当你明确希望电报私聊继续用保存前的全局主模型、而不跟新默认时，才临时开启。平时请保持关闭。">高级：固定电报私聊模型（不跟本次新默认）</label>
-            <select id="preserveTelegramDirectModel" style="width:100px; height:32px; font-size:13px!important; padding:4px 10px;">
-              <option value="on">开启</option>
-              <option value="off" selected>关闭</option>
-            </select>
-          </div>
-          <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; padding-top:12px; border-top:1px solid #f0f0ee;">
             <label style="font-size:13px; font-weight:700; color:var(--claude-muted)" title="开启：应用时同步提权/推理并清除会话思考覆盖；/think 可再写回">保存时下发全局选项到各会话</label>
             <select id="applyToSessions" style="width:100px; height:32px; font-size:13px!important; padding:4px 10px;" title="开启：应用并重启时向各会话下发提权/推理，并清除 thinkingLevel。无论开关，都会把电报私聊行为同步到网页主会话（不删网页 modelOverride）">
               <option value="on">开启</option>
@@ -148,7 +141,7 @@
         </div>
       </div>
       <div class="actions">
-        <button class="primary" id="saveBtn" onclick="saveSelection()" title="写入 agents.defaults.model（全局主模型+备份顺位）、提权与推理展示，并重启网关；见「保持电报私聊模型」说明">应用并重启</button>
+        <button class="primary" id="saveBtn" onclick="saveSelection()" title="写入 agents.defaults.model（全局主模型+备份顺位）、提权与推理展示，并重启网关。已各渠道自选模型的会话不会被此项覆盖。">应用并重启</button>
         <button class="ghost" id="restartBtn" onclick="restartService()">仅重启网关</button>
       </div>
     </div>
@@ -458,11 +451,10 @@
         const f = [document.getElementById('f1Model').value, document.getElementById('f2Model').value].filter(v => v && v!==p);
         const e = document.getElementById('elevatedDefault').value;
         const applyToSessions = document.getElementById('applyToSessions').value === 'on';
-        const preserveTelegramDirectModel = document.getElementById('preserveTelegramDirectModel').value === 'on';
         const rd = document.getElementById('reasoningDisplay').value;
         const pThinkOn = document.getElementById('pThinkingEnabled').value === 'on';
         const pThinkVal = document.getElementById('pThinkingValue').value;
-        await apiReq('/api/selection', { primary:p, fallbacks:f, elevatedDefault:e, reasoningDisplay: rd, applyToSessions, clearModelOverrides: false, preserveTelegramDirectModel, primaryThinkingEnabled: pThinkOn, primaryThinkingValue: pThinkVal });
+        await apiReq('/api/selection', { primary:p, fallbacks:f, elevatedDefault:e, reasoningDisplay: rd, applyToSessions, clearModelOverrides: false, primaryThinkingEnabled: pThinkOn, primaryThinkingValue: pThinkVal });
         await apiReq('/api/restart', {});
         await refresh();
         setLoading('saveBtn', false, { success: '已保存' });
