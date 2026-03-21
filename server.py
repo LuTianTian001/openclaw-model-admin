@@ -952,6 +952,72 @@ def _clear_sessions_overrides_for_provider(p_name: str) -> dict:
     return {"clearedSessions": cleared, "exists": True}
 
 
+def _iter_agent_models_json_paths() -> list[Path]:
+    """OpenClaw 按 agents/<agentId>/agent/models.json 与 openclaw.json 合并模型表。"""
+    agents_dir = CONFIG_PATH.parent / "agents"
+    if not agents_dir.is_dir():
+        return []
+    out: list[Path] = []
+    try:
+        for sub in sorted(agents_dir.iterdir()):
+            if not sub.is_dir():
+                continue
+            cand = sub / "agent" / "models.json"
+            if cand.is_file():
+                out.append(cand)
+    except OSError:
+        return []
+    return out
+
+
+def _provider_in_agent_models_json(p_name: str) -> bool:
+    for path in _iter_agent_models_json_paths():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        provs = data.get("providers") if isinstance(data, dict) else None
+        if isinstance(provs, dict) and p_name in provs:
+            return True
+    return False
+
+
+def _provider_block_from_agent_models_json(p_name: str) -> dict | None:
+    for path in _iter_agent_models_json_paths():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        provs = data.get("providers") if isinstance(data, dict) else None
+        if isinstance(provs, dict):
+            blk = provs.get(p_name)
+            if isinstance(blk, dict):
+                return copy.deepcopy(blk)
+    return None
+
+
+def _remove_provider_from_agent_models_json_files(p_name: str) -> list[str]:
+    """从各 agent 的 models.json 中移除同名 providers 键（与 openclaw.json 删除保持一致）。"""
+    edited: list[str] = []
+    for path in _iter_agent_models_json_paths():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        provs = data.get("providers")
+        if not isinstance(provs, dict) or p_name not in provs:
+            continue
+        del provs[p_name]
+        try:
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            edited.append(str(path))
+        except OSError:
+            continue
+    return edited
+
+
 def _openclaw_home_dir() -> Path:
     return CONFIG_PATH.parent.resolve()
 
@@ -1323,26 +1389,28 @@ class Handler(BaseHTTPRequestHandler):
                 config = read_config()
                 p_name = (payload.get("provider") or "").strip()
                 if not p_name:
-                    raise ValueError("缺少供应商名称 provider")
+                    raise ValueError("缺少供应商名称")
                 if p_name in BUILTIN_PROVIDERS:
                     raise ValueError("内置供应商不可删除")
                 provs = config.setdefault("models", {}).setdefault("providers", {})
                 if not isinstance(provs, dict):
                     provs = {}
                     config["models"]["providers"] = provs
-                if p_name not in provs:
-                    raise ValueError(
-                        "只能删除在「接入配置」中自定义添加的供应商（须在 models.providers 中有该项）；"
-                        "内置或界面合成的供应商不可整项删除，请使用「移除」逐模型清理。"
-                    )
                 prefix = p_name + "/"
-                snap_raw = provs.get(p_name)
-                provider_snap = copy.deepcopy(snap_raw) if isinstance(snap_raw, dict) else None
+                if p_name not in provs and not _provider_in_agent_models_json(p_name):
+                    raise ValueError("未找到该供应商")
+                provider_snap = None
+                if p_name in provs and isinstance(provs.get(p_name), dict):
+                    provider_snap = copy.deepcopy(provs[p_name])
+                if provider_snap is None:
+                    provider_snap = _provider_block_from_agent_models_json(p_name)
                 stripped_models = _strip_agents_models_key_prefix(config, prefix)
                 removed_auth_profiles = _purge_auth_profiles_for_provider(config, p_name)
-                del provs[p_name]
+                if p_name in provs:
+                    del provs[p_name]
                 _repair_all_agent_model_routing(config, prefix)
                 save_meta = save_config_with_validation(config)
+                merged_models_json_edited = _remove_provider_from_agent_models_json_files(p_name)
                 removed_cred_files: list[str] = []
                 if isinstance(provider_snap, dict):
                     cpaths = _credential_file_paths_in_provider_block(provider_snap)
@@ -1359,6 +1427,7 @@ class Handler(BaseHTTPRequestHandler):
                             "removedAgentModelEntries": stripped_models,
                             "removedAuthProfiles": removed_auth_profiles,
                             "removedCredentialFiles": removed_cred_files,
+                            "mergedAgentModelsJsonEdited": merged_models_json_edited,
                             "sessionOverridesCleared": sess_clean,
                         },
                     }
