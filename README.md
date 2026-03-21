@@ -2,6 +2,8 @@
 
 面向 **OpenClaw** 网关生态的**本地 Web 管理面板**：在浏览器里调整默认模型与 fallback、模型库、`openclaw.json` 中的模型思考参数，并读写 `sessions.json` 做会话侧同步（与网关 `/status` 解析一致）。**纯 Python 标准库 + 本机 `openclaw` CLI（用于配置校验）**。
 
+**平台范围：仅适配 GNU/Linux**（常见发行版；安装/启动脚本依赖 `bash`，状态与端口探测依赖 **`systemctl` / `ss`** 等 Linux 常见环境）。**不承诺**支持 macOS、Windows 等非 Linux 环境；若在非 Linux 上自行运行，属于未测试用法。
+
 ---
 
 ## 安全提示（必读）
@@ -20,12 +22,13 @@
 
 ---
 
-## 环境要求
+## 环境要求（Linux）
 
+- **操作系统**：**Linux**（x86_64 / aarch64 等常见架构；glibc 环境）
 - **Python 3.10+**（推荐 3.12）
 - 本机已安装 **`openclaw`** 且可在 PATH 中执行（用于保存配置前的校验）
 - 已存在 OpenClaw 数据目录（默认当前运行用户的 `~/.openclaw/`，内含 `openclaw.json`；**请用与网关相同的用户**运行本面板，以便读写同一份配置与会话）
-- Linux 上若使用「重启网关」按钮，需有 **systemd** 及对应单元（默认可通过环境变量改名）
+- 使用「重启网关」按钮时，默认走 **systemd**（`OPENCLAW_GATEWAY_SERVICE`）；无 systemd 时请配置 **`OPENCLAW_GATEWAY_RESTART_COMMAND`**
 
 ---
 
@@ -111,7 +114,7 @@ chmod +x start.sh
 
 ---
 
-## 使用 Docker（可选）
+## 使用 Docker（可选，Linux 宿主机）
 
 镜像内**默认没有** `openclaw` CLI；若不做校验，可设 `OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE=1`（**生产环境请自行评估风险**）。
 
@@ -163,4 +166,4 @@ python3 -m py_compile server.py
 
 ## 许可与免责
 
-本工具直接修改 `openclaw.json` 与 `sessions.json`，使用前请自行备份。与 OpenClaw 网关、CLI 行为以你本机安装版本为准。
+本工具直接修改 `openclaw.json` 与 `sessions.json`，使用前请自行备份。与 OpenClaw 网关、CLI 行为以你本机安装版本为准。**官方适配与说明均以 Linux 为准**，其他操作系统不在支持范围内。

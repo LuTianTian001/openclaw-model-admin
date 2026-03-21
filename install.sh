@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# 一键获取代码并启动。支持：git 克隆 或 无 git（源码包）；启动前预检 Python / 配置路径。
+# 一键获取代码并启动（仅 Linux）。支持：git 克隆 或 无 git（源码包）；启动前预检 Python / 配置路径。
 set -euo pipefail
+
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "[install] 本脚本仅支持 Linux（uname: $(uname -s)）。"
+  exit 1
+fi
 
 DEFAULT_REPO="LuTianTian001/openclaw-model-admin"
 REPO="${REPO:-$DEFAULT_REPO}"

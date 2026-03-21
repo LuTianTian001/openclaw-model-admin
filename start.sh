@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
+# 仅面向 Linux；依赖与 README 中的 systemd/ss 等假设一致。
 set -euo pipefail
+
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "[start] 本面板仅适配 Linux（uname: $(uname -s)）。"
+  exit 1
+fi
+
 cd "$(dirname "$0")"
 
 # 加载同目录 .env（不提交到 Git），便于一键部署时写死 OPENCLAW_HOME 等
