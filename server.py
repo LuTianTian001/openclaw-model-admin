@@ -781,17 +781,29 @@ def clear_session_thinking_levels():
 def _refs_available_in_config(config: dict) -> set[str]:
     """当前配置中可作为 primary/fallback 的 provider/model ref 集合。"""
     refs: set[str] = set()
-    am = (config.get("agents") or {}).get("defaults", {}).get("models", {})
-    if isinstance(am, dict):
-        for k in am:
-            if isinstance(k, str) and "/" in k.strip():
-                refs.add(k.strip())
-    for pn, p in (config.get("models") or {}).get("providers", {}).items():
-        if not isinstance(p, dict):
-            continue
-        for m in p.get("models") or []:
-            if isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"].strip():
-                refs.add(f"{pn}/{m['id'].strip()}")
+    agents = config.get("agents")
+    if isinstance(agents, dict):
+        for ab in agents.values():
+            if not isinstance(ab, dict):
+                continue
+            defs = ab.get("defaults")
+            if not isinstance(defs, dict):
+                continue
+            am = defs.get("models")
+            if isinstance(am, dict):
+                for k in am:
+                    if isinstance(k, str) and "/" in k.strip():
+                        refs.add(k.strip())
+    mdl = config.get("models")
+    if isinstance(mdl, dict):
+        provs = mdl.get("providers")
+        if isinstance(provs, dict):
+            for pn, p in provs.items():
+                if not isinstance(p, dict):
+                    continue
+                for m in p.get("models") or []:
+                    if isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"].strip():
+                        refs.add(f"{pn}/{m['id'].strip()}")
     return refs
 
 
@@ -800,9 +812,8 @@ def _pick_fallback_primary(config: dict) -> str:
     return refs[0] if refs else ""
 
 
-def _repair_defaults_model_routing(config: dict, removed_prefix: str) -> None:
-    """删掉某供应商后：主模型/备用不得指向已删 ref；否则 openclaw validate 常失败并触发整文件回滚，表现为删除不生效。"""
-    mb = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("model", {})
+def _repair_model_routing_block(mb: dict, config: dict, removed_prefix: str) -> None:
+    """单个 agents.*.defaults.model：删掉某供应商后修正 primary / fallbacks。"""
     if not isinstance(mb, dict):
         return
     refs_set = _refs_available_in_config(config)
@@ -834,6 +845,125 @@ def _repair_defaults_model_routing(config: dict, removed_prefix: str) -> None:
         seen.add(xs)
         new_fbs.append(xs)
     mb["fallbacks"] = new_fbs
+
+
+def _repair_all_agent_model_routing(config: dict, removed_prefix: str) -> None:
+    """遍历 agents 下各条目的 defaults.model，避免仅修了 defaults 主块。"""
+    agents = config.get("agents")
+    if not isinstance(agents, dict):
+        return
+    for ab in agents.values():
+        if not isinstance(ab, dict):
+            continue
+        defs = ab.get("defaults")
+        if not isinstance(defs, dict):
+            continue
+        mb = defs.get("model")
+        if isinstance(mb, dict):
+            _repair_model_routing_block(mb, config, removed_prefix)
+
+
+def _any_agent_model_ref_starts_with(config: dict, prefix: str) -> bool:
+    """是否存在 agents.*.defaults.models 的键以 prefix 开头（如 供应商名/）。"""
+    agents = config.get("agents")
+    if not isinstance(agents, dict):
+        return False
+    for ab in agents.values():
+        if not isinstance(ab, dict):
+            continue
+        defs = ab.get("defaults")
+        if not isinstance(defs, dict):
+            continue
+        am = defs.get("models")
+        if not isinstance(am, dict):
+            continue
+        for ref in am.keys():
+            if isinstance(ref, str) and ref.startswith(prefix):
+                return True
+    return False
+
+
+def _strip_agents_models_key_prefix(config: dict, prefix: str) -> int:
+    """删除所有 agents.*.defaults.models 中以 prefix 开头的 ref（如供应商名/）。"""
+    removed = 0
+    agents = config.get("agents")
+    if not isinstance(agents, dict):
+        return removed
+    for ab in agents.values():
+        if not isinstance(ab, dict):
+            continue
+        defs = ab.get("defaults")
+        if not isinstance(defs, dict):
+            continue
+        am = defs.get("models")
+        if not isinstance(am, dict):
+            continue
+        for ref in list(am.keys()):
+            if isinstance(ref, str) and ref.startswith(prefix):
+                del am[ref]
+                removed += 1
+    return removed
+
+
+def _purge_auth_profiles_for_provider(config: dict, p_name: str) -> list[str]:
+    """移除 auth.profiles 中与某 models.providers 供应商绑定的项（provider 字段或 profile 键名）。"""
+    removed: list[str] = []
+    auth = config.get("auth")
+    if not isinstance(auth, dict):
+        return removed
+    profs = auth.get("profiles")
+    if not isinstance(profs, dict):
+        return removed
+    key_prefix = f"{p_name}:"
+    for key in list(profs.keys()):
+        if not isinstance(key, str):
+            continue
+        ent = profs.get(key)
+        drop = key == p_name or key.startswith(key_prefix)
+        if not drop and isinstance(ent, dict) and ent.get("provider") == p_name:
+            drop = True
+        if drop:
+            del profs[key]
+            removed.append(key)
+    return removed
+
+
+def _clear_sessions_overrides_for_provider(p_name: str) -> dict:
+    """sessions.json：去掉指向已删供应商的 providerOverride / modelOverride。"""
+    if not SESSION_STORE_PATH.exists():
+        return {"clearedSessions": 0, "exists": False}
+    try:
+        store = json.loads(SESSION_STORE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {"clearedSessions": 0, "exists": True, "error": "sessions 解析失败"}
+    if not isinstance(store, dict):
+        return {"clearedSessions": 0, "exists": True, "error": "sessions 根非对象"}
+    prefix = p_name + "/"
+    cleared = 0
+    for raw in store.values():
+        if not isinstance(raw, dict):
+            continue
+        changed = False
+        po = raw.get("providerOverride")
+        po = po.strip() if isinstance(po, str) else ""
+        mo = raw.get("modelOverride")
+        mo = mo.strip() if isinstance(mo, str) else ""
+        if po == p_name:
+            raw.pop("providerOverride", None)
+            raw.pop("modelOverride", None)
+            changed = True
+        elif mo:
+            if mo.startswith(prefix):
+                raw.pop("modelOverride", None)
+                changed = True
+            elif "/" in mo and mo.split("/", 1)[0].strip() == p_name:
+                raw.pop("modelOverride", None)
+                changed = True
+        if changed:
+            cleared += 1
+    if cleared > 0:
+        SESSION_STORE_PATH.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"clearedSessions": cleared, "exists": True}
 
 
 def probe_provider(p_name, url):
@@ -1099,22 +1229,18 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(provs, dict):
                     provs = {}
                     config["models"]["providers"] = provs
-                am = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("models", {})
-                if not isinstance(am, dict):
-                    am = {}
-                    config["agents"]["defaults"]["models"] = am
                 prefix = p_name + "/"
                 has_prov = p_name in provs
-                has_agent_refs = any(isinstance(k, str) and k.startswith(prefix) for k in am)
+                has_agent_refs = _any_agent_model_ref_starts_with(config, prefix)
                 if not has_prov and not has_agent_refs:
                     raise ValueError(f"配置中未找到供应商「{p_name}」或其模型条目")
+                stripped_models = _strip_agents_models_key_prefix(config, prefix)
+                removed_auth_profiles = _purge_auth_profiles_for_provider(config, p_name)
                 if has_prov:
                     del provs[p_name]
-                for ref in list(am.keys()):
-                    if isinstance(ref, str) and ref.startswith(prefix):
-                        del am[ref]
-                _repair_defaults_model_routing(config, prefix)
+                _repair_all_agent_model_routing(config, prefix)
                 save_meta = save_config_with_validation(config)
+                sess_clean = _clear_sessions_overrides_for_provider(p_name)
                 cleared_pv = clear_session_thinking_levels()
                 self._send_json(
                     {
@@ -1123,6 +1249,9 @@ class Handler(BaseHTTPRequestHandler):
                         "meta": {
                             "sessionThinkingCleared": cleared_pv,
                             "migrations": save_meta.get("migrations", []),
+                            "removedAgentModelEntries": stripped_models,
+                            "removedAuthProfiles": removed_auth_profiles,
+                            "sessionOverridesCleared": sess_clean,
                         },
                     }
                 )
