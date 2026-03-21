@@ -778,6 +778,64 @@ def clear_session_thinking_levels():
     return {"cleared": cleared, "exists": True}
 
 
+def _refs_available_in_config(config: dict) -> set[str]:
+    """当前配置中可作为 primary/fallback 的 provider/model ref 集合。"""
+    refs: set[str] = set()
+    am = (config.get("agents") or {}).get("defaults", {}).get("models", {})
+    if isinstance(am, dict):
+        for k in am:
+            if isinstance(k, str) and "/" in k.strip():
+                refs.add(k.strip())
+    for pn, p in (config.get("models") or {}).get("providers", {}).items():
+        if not isinstance(p, dict):
+            continue
+        for m in p.get("models") or []:
+            if isinstance(m, dict) and isinstance(m.get("id"), str) and m["id"].strip():
+                refs.add(f"{pn}/{m['id'].strip()}")
+    return refs
+
+
+def _pick_fallback_primary(config: dict) -> str:
+    refs = sorted(_refs_available_in_config(config))
+    return refs[0] if refs else ""
+
+
+def _repair_defaults_model_routing(config: dict, removed_prefix: str) -> None:
+    """删掉某供应商后：主模型/备用不得指向已删 ref；否则 openclaw validate 常失败并触发整文件回滚，表现为删除不生效。"""
+    mb = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("model", {})
+    if not isinstance(mb, dict):
+        return
+    refs_set = _refs_available_in_config(config)
+    pr = mb.get("primary")
+    pr = pr.strip() if isinstance(pr, str) else ""
+    broken = (not pr) or pr.startswith(removed_prefix) or bool(refs_set and pr not in refs_set)
+    if broken:
+        mb["primary"] = _pick_fallback_primary(config)
+    pr2 = mb.get("primary")
+    pr2 = pr2.strip() if isinstance(pr2, str) else ""
+    fbs = mb.get("fallbacks", [])
+    if not isinstance(fbs, list):
+        mb["fallbacks"] = []
+        return
+    new_fbs: list[str] = []
+    seen: set[str] = set()
+    for x in fbs:
+        if not isinstance(x, str):
+            continue
+        xs = x.strip()
+        if not xs or xs.startswith(removed_prefix):
+            continue
+        if refs_set and xs not in refs_set:
+            continue
+        if xs == pr2:
+            continue
+        if xs in seen:
+            continue
+        seen.add(xs)
+        new_fbs.append(xs)
+    mb["fallbacks"] = new_fbs
+
+
 def probe_provider(p_name, url):
     # 针对内置供应商的特殊健康检查
     if p_name in BUILTIN_PROVIDERS or (url and "(openai-codex)" in url):
@@ -1037,27 +1095,25 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("缺少供应商名称 provider")
                 if p_name in BUILTIN_PROVIDERS:
                     raise ValueError("内置供应商不可删除")
-                provs = config.get("models", {}).get("providers", {})
-                if not isinstance(provs, dict) or p_name not in provs:
-                    raise ValueError(f"供应商不存在或未在配置中: {p_name}")
-                del provs[p_name]
-                prefix = p_name + "/"
+                provs = config.setdefault("models", {}).setdefault("providers", {})
+                if not isinstance(provs, dict):
+                    provs = {}
+                    config["models"]["providers"] = provs
                 am = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("models", {})
-                if isinstance(am, dict):
-                    for ref in list(am.keys()):
-                        if isinstance(ref, str) and ref.startswith(prefix):
-                            del am[ref]
-                model_block = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("model", {})
-                if isinstance(model_block, dict):
-                    pr = model_block.get("primary")
-                    pr = pr.strip() if isinstance(pr, str) else ""
-                    if pr.startswith(prefix):
-                        model_block["primary"] = ""
-                    fbs = model_block.get("fallbacks", [])
-                    if isinstance(fbs, list):
-                        model_block["fallbacks"] = [
-                            x for x in fbs if not (isinstance(x, str) and x.strip().startswith(prefix))
-                        ]
+                if not isinstance(am, dict):
+                    am = {}
+                    config["agents"]["defaults"]["models"] = am
+                prefix = p_name + "/"
+                has_prov = p_name in provs
+                has_agent_refs = any(isinstance(k, str) and k.startswith(prefix) for k in am)
+                if not has_prov and not has_agent_refs:
+                    raise ValueError(f"配置中未找到供应商「{p_name}」或其模型条目")
+                if has_prov:
+                    del provs[p_name]
+                for ref in list(am.keys()):
+                    if isinstance(ref, str) and ref.startswith(prefix):
+                        del am[ref]
+                _repair_defaults_model_routing(config, prefix)
                 save_meta = save_config_with_validation(config)
                 cleared_pv = clear_session_thinking_levels()
                 self._send_json(

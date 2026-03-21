@@ -571,6 +571,8 @@
         await refresh();
       } catch (e) {
         setLoading(btnId, false, { error: true });
+        const msg = e && e.message ? e.message : '删除失败';
+        alert(msg);
       }
     }
     
