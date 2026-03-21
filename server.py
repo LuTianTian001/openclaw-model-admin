@@ -966,6 +966,87 @@ def _clear_sessions_overrides_for_provider(p_name: str) -> dict:
     return {"clearedSessions": cleared, "exists": True}
 
 
+def _openclaw_home_dir() -> Path:
+    return CONFIG_PATH.parent.resolve()
+
+
+def _looks_like_filesystem_path_str(s: str) -> bool:
+    t = s.strip()
+    if not t or t.startswith("http://") or t.startswith("https://"):
+        return False
+    if t.startswith("~") or "/" in t or "\\" in t:
+        return True
+    low = t.lower()
+    for suf in (".pem", ".key", ".crt", ".json", "-token", "_token"):
+        if low.endswith(suf):
+            return True
+    return False
+
+
+def _credential_file_paths_in_provider_block(p: dict) -> list[Path]:
+    """从 models.providers[供应商] 块中收集指向 openclaw/credentials/ 下的现有文件路径。"""
+    out: list[Path] = []
+    try:
+        home = _openclaw_home_dir()
+        cred_root = (home / "credentials").resolve()
+    except OSError:
+        return out
+
+    def walk(o: object) -> None:
+        if isinstance(o, dict):
+            for _k, v in o.items():
+                if isinstance(v, str) and _looks_like_filesystem_path_str(v):
+                    raw = Path(v).expanduser()
+                    try:
+                        cand = raw.resolve() if raw.is_absolute() else (home / v.lstrip("/")).resolve()
+                    except OSError:
+                        walk(v)
+                        continue
+                    if cand.is_file() and cred_root in cand.parents:
+                        out.append(cand)
+                else:
+                    walk(v)
+        elif isinstance(o, list):
+            for x in o:
+                walk(x)
+
+    walk(p)
+    seen: set[str] = set()
+    uniq: list[Path] = []
+    for x in out:
+        sx = str(x)
+        if sx not in seen:
+            seen.add(sx)
+            uniq.append(x)
+    return uniq
+
+
+def _unlink_provider_credential_files(paths: list[Path]) -> list[str]:
+    """仅删除位于 openclaw/credentials/ 下的文件；配置已成功保存后再调用。"""
+    removed: list[str] = []
+    try:
+        cred_root = (_openclaw_home_dir() / "credentials").resolve()
+    except OSError:
+        return removed
+    if not cred_root.is_dir():
+        return removed
+    for p in paths:
+        try:
+            r = p.resolve()
+        except OSError:
+            continue
+        if cred_root not in r.parents:
+            continue
+        if not r.is_file():
+            continue
+        try:
+            r.unlink()
+            removed.append(str(r))
+        except OSError:
+            pass
+    return removed
+
+
 def probe_provider(p_name, url):
     # 针对内置供应商的特殊健康检查
     if p_name in BUILTIN_PROVIDERS or (url and "(openai-codex)" in url):
@@ -1234,12 +1315,21 @@ class Handler(BaseHTTPRequestHandler):
                 has_agent_refs = _any_agent_model_ref_starts_with(config, prefix)
                 if not has_prov and not has_agent_refs:
                     raise ValueError(f"配置中未找到供应商「{p_name}」或其模型条目")
+                provider_snap = None
+                if has_prov:
+                    snap_raw = provs.get(p_name)
+                    if isinstance(snap_raw, dict):
+                        provider_snap = copy.deepcopy(snap_raw)
                 stripped_models = _strip_agents_models_key_prefix(config, prefix)
                 removed_auth_profiles = _purge_auth_profiles_for_provider(config, p_name)
                 if has_prov:
                     del provs[p_name]
                 _repair_all_agent_model_routing(config, prefix)
                 save_meta = save_config_with_validation(config)
+                removed_cred_files: list[str] = []
+                if isinstance(provider_snap, dict):
+                    cpaths = _credential_file_paths_in_provider_block(provider_snap)
+                    removed_cred_files = _unlink_provider_credential_files(cpaths)
                 sess_clean = _clear_sessions_overrides_for_provider(p_name)
                 cleared_pv = clear_session_thinking_levels()
                 self._send_json(
@@ -1251,6 +1341,7 @@ class Handler(BaseHTTPRequestHandler):
                             "migrations": save_meta.get("migrations", []),
                             "removedAgentModelEntries": stripped_models,
                             "removedAuthProfiles": removed_auth_profiles,
+                            "removedCredentialFiles": removed_cred_files,
                             "sessionOverridesCleared": sess_clean,
                         },
                     }
