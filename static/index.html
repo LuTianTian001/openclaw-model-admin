@@ -218,7 +218,8 @@
       const ps = document.getElementById(prefix+'Provider'), ms = document.getElementById(prefix+'Model'), groups = groupedModels();
       const currP = ref && ref.includes('/') ? ref.split('/')[0] : (groups[0]?.provider || '');
       ps.innerHTML = (prefix!=='p'?'<option value="">(无)</option>':'') + groups.map(g => `<option value="${g.provider}" ${g.provider===currP?'selected':''}>${g.provider}</option>`).join('');
-      const actP = ps.value; const models = actP ? groups.find(g => g.provider === actP).models : [];
+      const actP = ps.value;
+      const models = actP ? ((groups.find(g => g.provider === actP) || {}).models || []) : [];
       ms.innerHTML = (prefix!=='p'?'<option value="">(无)</option>':'') + models.map(m => `<option value="${m.ref}" ${m.ref===ref?'selected':''}>${m.name || m.id}</option>`).join('');
     }
     function initListeners(prefix) {
@@ -236,7 +237,12 @@
         headers: b ? { 'Content-Type': 'application/json' } : undefined,
         body: b ? JSON.stringify(b) : undefined,
       });
-      const d = await r.json();
+      let d;
+      try {
+        d = await r.json();
+      } catch (e) {
+        throw new Error('响应不是 JSON（可能连错端口或反代未转发 /api）');
+      }
       if (!r.ok || d.ok === false) throw new Error(d.error || '失败');
       return d;
     }

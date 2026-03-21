@@ -1519,9 +1519,23 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
-        if path == "/": self._send_file(STATIC_DIR / "index.html")
-        elif path == "/api/state": self._send_json({"ok": True, "state": build_state()})
-        else: self.send_response(HTTPStatus.NOT_FOUND); self.end_headers()
+        if path == "/":
+            self._send_file(STATIC_DIR / "index.html")
+        elif path == "/api/state":
+            try:
+                self._send_json({"ok": True, "state": build_state()})
+            except Exception as e:
+                self._send_json(
+                    {
+                        "ok": False,
+                        "error": f"build_state 失败: {e}",
+                        "state": {"alerts": [{"level": "error", "msg": str(e)}], "configValid": False},
+                    },
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+        else:
+            self.send_response(HTTPStatus.NOT_FOUND)
+            self.end_headers()
 
     def do_POST(self):
         path = urlparse(self.path).path
