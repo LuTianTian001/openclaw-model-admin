@@ -81,6 +81,7 @@
     <button class="sync-btn" id="syncBtn" onclick="manualSync()" title="仅从磁盘重新读取配置并刷新本页显示，不修改 openclaw.json、不写 sessions.json、不重启网关">同步</button>
   </header>
   <div class="container">
+    <div id="pageLoadHint" style="text-align:center;padding:10px 12px;margin-bottom:8px;color:var(--claude-muted);font-size:13px;background:#fafaf9;border-radius:10px;border:1px solid var(--claude-border);">正在载入配置…</div>
     <div class="stats">
       <div class="stat-item"><span class="stat-label">默认模型</span><div class="stat-value" id="statPrimary">-</div></div>
       <div class="stat-item"><span class="stat-label">备用顺位</span><div class="stat-value" id="statFallbacks">0</div></div>
@@ -312,6 +313,8 @@
     
     function renderFromState(s) {
       state = s;
+      const plh = document.getElementById('pageLoadHint');
+      if (plh) plh.style.display = 'none';
       const alertBar = document.getElementById('topAlertBar');
       const firstError = (state.alerts || []).find(a => a.level === 'error');
       if (firstError) {
@@ -393,6 +396,11 @@
         document.getElementById('topAlertBar').style.display = 'none';
         return true;
       } catch(e) {
+        const plh = document.getElementById('pageLoadHint');
+        if (plh) {
+          plh.style.display = 'block';
+          plh.textContent = '无法载入配置，请确认本页端口对应的管理端已启动';
+        }
         document.getElementById('topAlertBar').style.display = 'block';
         document.getElementById('topAlertBar').innerText = '⚠ 无法与管理后台建立连接，请检查网关及端口 8765';
         return false;

@@ -85,6 +85,9 @@ cd openclaw-model-admin && chmod +x start.sh && ./start.sh
 | `OPENCLAW_MODEL_ADMIN_HOST` / `PORT` | 面板监听 | `0.0.0.0` / `8765` |
 | `OPENCLAW_MODEL_ADMIN_PREFS_PATH` | 面板偏好文件 | 项目目录 `admin-prefs.json` |
 | `OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE` | `1` 跳过 CLI 校验（无 `openclaw` 时） | 不跳过 |
+| `OPENCLAW_MODEL_ADMIN_DISABLE_STATE_VALIDATE_CACHE` | `1` 时每次打开页面都重新跑 `openclaw config validate`（调试用，**明显变慢**） | 不设置（默认按 `openclaw.json` 修改时间缓存校验结果） |
+
+**页面加载**：刷新/二次进入时，后端会**缓存**对 `openclaw.json` 的 CLI 校验结果（文件未改则不再起子进程），首次进入或刚保存配置后仍会校验一次。
 
 ---
 

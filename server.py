@@ -43,6 +43,13 @@ SESSION_STORE_PATH = _path_from_env(
     "OPENCLAW_SESSIONS_PATH",
     _default_sessions_path_for_config(CONFIG_PATH),
 )
+
+# GET /api/state 每次跑 openclaw config validate 很慢（常 1～3s+）；按 openclaw.json 的 mtime 缓存结果。保存成功后会 prime 缓存避免紧接着再跑 CLI。
+_CLI_VALIDATE_CACHE: dict = {"key": None, "result": None}
+
+# build_state 内只读一次 sessions.json，避免同一请求内多次 parse 大文件
+_MISSING_SESSION_SNAPSHOT = object()
+
 SERVICE_NAME = os.environ.get("OPENCLAW_GATEWAY_SERVICE", "openclaw-gateway.service").strip() or "openclaw-gateway.service"
 HOST = os.environ.get("OPENCLAW_MODEL_ADMIN_HOST", "0.0.0.0")
 PORT = int(os.environ.get("OPENCLAW_MODEL_ADMIN_PORT", "8765"))
@@ -170,14 +177,51 @@ def write_config(config):
     CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return migrations
 
-def validate_config_file():
+def _cli_validate_cache_disabled() -> bool:
+    return os.environ.get("OPENCLAW_MODEL_ADMIN_DISABLE_STATE_VALIDATE_CACHE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _cli_validate_cache_key():
+    if not CONFIG_PATH.exists():
+        return None
+    try:
+        return str(CONFIG_PATH.resolve()), CONFIG_PATH.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+def _prime_cli_validate_cache(validation: dict) -> None:
+    """保存成功后写入缓存，避免紧随其后的 GET /api/state 再 spawn openclaw。"""
+    key = _cli_validate_cache_key()
+    if key is None:
+        return
+    _CLI_VALIDATE_CACHE["key"] = key
+    _CLI_VALIDATE_CACHE["result"] = copy.deepcopy(validation)
+
+
+def validate_config_file(*, use_cache: bool = False):
     if os.environ.get("OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE", "").strip().lower() in ("1", "true", "yes", "on"):
         return {"valid": True, "issues": [], "raw": ""}
+    if use_cache and not _cli_validate_cache_disabled():
+        key = _cli_validate_cache_key()
+        if key and _CLI_VALIDATE_CACHE.get("key") == key and _CLI_VALIDATE_CACHE.get("result") is not None:
+            return copy.deepcopy(_CLI_VALIDATE_CACHE["result"])
     result = run_command(["openclaw", "config", "validate"], timeout=20)
     output = "\n".join([p for p in [result.get("stdout", ""), result.get("stderr", "")] if p]).strip()
 
     if result.get("code") == -1:
-        return {"valid": False, "issues": [f"配置校验命令执行失败: {result.get('stderr') or 'unknown'}"], "raw": output}
+        out = {"valid": False, "issues": [f"配置校验命令执行失败: {result.get('stderr') or 'unknown'}"], "raw": output}
+        if use_cache and not _cli_validate_cache_disabled():
+            key = _cli_validate_cache_key()
+            if key is not None:
+                _CLI_VALIDATE_CACHE["key"] = key
+                _CLI_VALIDATE_CACHE["result"] = copy.deepcopy(out)
+        return out
 
     valid = "Config invalid" not in output
     issues = []
@@ -188,16 +232,24 @@ def validate_config_file():
     if not valid and not issues:
         issues = [output or "配置无效"]
 
-    return {"valid": valid, "issues": issues, "raw": output}
+    out = {"valid": valid, "issues": issues, "raw": output}
+    if use_cache and not _cli_validate_cache_disabled():
+        key = _cli_validate_cache_key()
+        if key is not None:
+            _CLI_VALIDATE_CACHE["key"] = key
+            _CLI_VALIDATE_CACHE["result"] = copy.deepcopy(out)
+    return out
+
 
 def save_config_with_validation(config):
     previous_raw = CONFIG_PATH.read_text(encoding="utf-8") if CONFIG_PATH.exists() else "{}\n"
     migrations = write_config(config)
-    validation = validate_config_file()
+    validation = validate_config_file(use_cache=False)
     if not validation["valid"]:
         CONFIG_PATH.write_text(previous_raw, encoding="utf-8")
         brief = "；".join(validation["issues"][:3]) if validation["issues"] else (validation["raw"] or "未知错误")
         raise ValueError(f"配置校验失败，已自动回滚：{brief}")
+    _prime_cli_validate_cache(validation)
     return {"migrations": migrations, "validation": validation}
 
 def run_command(args, timeout=5):
@@ -477,14 +529,14 @@ def sync_web_session_from_telegram_direct(source_session_key: str | None = None)
     }
 
 
-def main_session_route_drift(config: dict) -> dict:
+def main_session_route_drift(config: dict, session_store=_MISSING_SESSION_SNAPSHOT) -> dict:
     """网页主会话是否因 modelOverride 等与「默认路由 primary」脱节。"""
     try:
         primary = (config.get("agents") or {}).get("defaults", {}).get("model", {}).get("primary") or ""
     except Exception:
         primary = ""
     primary = primary.strip() if isinstance(primary, str) else ""
-    store = _read_session_store()
+    store = _read_session_store() if session_store is _MISSING_SESSION_SNAPSHOT else session_store
     if not store:
         return {
             "hasOverride": False,
@@ -524,14 +576,14 @@ def _read_session_store():
     return store if isinstance(store, dict) else None
 
 
-def build_session_previews(config) -> list:
+def build_session_previews(config, session_store=_MISSING_SESSION_SNAPSHOT) -> list:
     """并排预览：电报私聊 + 网页主会话（agent:main:main），便于核对 Web 与 Telegram 是否同一 ref、同一 /status Think。"""
     try:
         primary = (config.get("agents") or {}).get("defaults", {}).get("model", {}).get("primary") or ""
     except Exception:
         primary = ""
     primary = primary if isinstance(primary, str) else ""
-    store = _read_session_store()
+    store = _read_session_store() if session_store is _MISSING_SESSION_SNAPSHOT else session_store
     if not store:
         return []
     out = []
@@ -556,7 +608,7 @@ def build_session_previews(config) -> list:
     return out
 
 
-def resolve_active_chat_session(config):
+def resolve_active_chat_session(config, session_store=_MISSING_SESSION_SNAPSHOT):
     """从 sessions.json 选一条「预览用」会话（优先电报私聊），字段与 /status Think 解析一致。"""
     try:
         primary = (config.get("agents") or {}).get("defaults", {}).get("model", {}).get("primary") or ""
@@ -575,7 +627,7 @@ def resolve_active_chat_session(config):
         "statusThink": cfg_only,
         "statusThinkSource": "config",
     }
-    store = _read_session_store()
+    store = _read_session_store() if session_store is _MISSING_SESSION_SNAPSHOT else session_store
     if store is None:
         if not SESSION_STORE_PATH.exists():
             return empty
@@ -795,7 +847,7 @@ def build_state():
         if "params" in raw and not isinstance(raw.get("params"), dict):
             config_issues.append(f"agents.defaults.models.{ref}.params: 应为对象")
 
-    cli_validation = validate_config_file()
+    cli_validation = validate_config_file(use_cache=True)
     if not cli_validation["valid"]:
         config_issues.extend(cli_validation["issues"])
 
@@ -803,9 +855,11 @@ def build_state():
     if config_issues:
         config_issues = list(dict.fromkeys(config_issues))
 
+    session_snap = _read_session_store()
     gateway_active = probe_gateway_active()
-    active_chat = resolve_active_chat_session(config)
-    session_previews = build_session_previews(config)
+    active_chat = resolve_active_chat_session(config, session_snap)
+    session_previews = build_session_previews(config, session_snap)
+    main_route = main_session_route_drift(config, session_snap)
 
     alignment_hints = []
     if isinstance(configured_models, dict) and "/" in configured_models:
@@ -820,7 +874,6 @@ def build_state():
         alerts.append({"level": "error", "msg": f"配置校验失败（{len(config_issues)} 项）"})
     
     prefs = read_admin_prefs()
-    main_route = main_session_route_drift(config)
     return {
         "configPath": str(CONFIG_PATH),
         "primary": agents.get("model", {}).get("primary", ""),
