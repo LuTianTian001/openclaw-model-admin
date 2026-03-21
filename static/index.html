@@ -424,7 +424,6 @@
       try {
         const d = await apiReq('/api/state');
         renderFromState(d.state);
-        document.getElementById('topAlertBar').style.display = 'none';
         return true;
       } catch(e) {
         const plh = document.getElementById('pageLoadHint');
