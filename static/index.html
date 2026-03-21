@@ -564,7 +564,7 @@
 
     async function deleteWholeProvider(name) {
       if (!name) return;
-      if (!confirm(`确认删除自定义供应商「${name}」及其下全部相关配置？\n\n此项仅适用于您在「接入配置」里添加的供应商（models.providers 中的项），不会用于内置或界面合成行。\n\n将删除：该供应商整块（含所有模型与内联密钥）、agents 下「${name}/」开头的 models 覆盖、auth.profiles 中绑定项；credentials 下仅该供应商独占且非系统保护的文件；sessions 中相关模型覆盖。默认/备用会按剩余模型重选。\n\n此操作不可恢复。`)) return;
+      if (!confirm(`确认删除自定义供应商「${name}」及其下全部相关配置？\n\n此项仅适用于您在「接入配置」里添加的供应商（models.providers 中的项），不会用于内置或界面合成行。\n\n将删除：该供应商整块（含所有模型定义与内联密钥）、agents 子树内任意位置「${name}/」开头的模型 ref 键（含 alias、params.thinking 等整块覆盖）、auth.profiles 中绑定项；credentials 下仅该供应商独占且非系统保护的文件；sessions 中相关模型覆盖。各 agent 的 models.json 中同名 providers 块也会同步删除。\n\n此操作不可恢复。`)) return;
       const btnId = 'delProvBtn_' + name.replace(/\//g, '_').replace(/\./g, '_');
       setLoading(btnId, true);
       try {

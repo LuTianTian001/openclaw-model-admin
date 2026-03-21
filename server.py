@@ -869,26 +869,28 @@ def _repair_all_agent_model_routing(config: dict, removed_prefix: str) -> None:
             _repair_model_routing_block(mb, config, removed_prefix)
 
 
-def _strip_agents_models_key_prefix(config: dict, prefix: str) -> int:
-    """删除所有 agents.*.defaults.models 中以 prefix 开头的 ref（如供应商名/）。"""
+def _deep_remove_agent_ref_keys(obj: object, prefix: str) -> int:
+    """在 agents 子树中删除所有「模型 ref」形键（prefix 如 供应商名/，须含 /），含 alias、params.thinking 等整块。"""
     removed = 0
+    if isinstance(obj, dict):
+        for k in list(obj.keys()):
+            if isinstance(k, str) and "/" in k and k.startswith(prefix):
+                del obj[k]
+                removed += 1
+            else:
+                removed += _deep_remove_agent_ref_keys(obj[k], prefix)
+    elif isinstance(obj, list):
+        for x in obj:
+            removed += _deep_remove_agent_ref_keys(x, prefix)
+    return removed
+
+
+def _strip_agents_models_key_prefix(config: dict, prefix: str) -> int:
+    """删除 agents 下任意深度的 per-model 配置键（不限于 defaults.models）。"""
     agents = config.get("agents")
     if not isinstance(agents, dict):
-        return removed
-    for ab in agents.values():
-        if not isinstance(ab, dict):
-            continue
-        defs = ab.get("defaults")
-        if not isinstance(defs, dict):
-            continue
-        am = defs.get("models")
-        if not isinstance(am, dict):
-            continue
-        for ref in list(am.keys()):
-            if isinstance(ref, str) and ref.startswith(prefix):
-                del am[ref]
-                removed += 1
-    return removed
+        return 0
+    return _deep_remove_agent_ref_keys(agents, prefix)
 
 
 def _purge_auth_profiles_for_provider(config: dict, p_name: str) -> list[str]:
