@@ -869,26 +869,6 @@ def _repair_all_agent_model_routing(config: dict, removed_prefix: str) -> None:
             _repair_model_routing_block(mb, config, removed_prefix)
 
 
-def _any_agent_model_ref_starts_with(config: dict, prefix: str) -> bool:
-    """是否存在 agents.*.defaults.models 的键以 prefix 开头（如 供应商名/）。"""
-    agents = config.get("agents")
-    if not isinstance(agents, dict):
-        return False
-    for ab in agents.values():
-        if not isinstance(ab, dict):
-            continue
-        defs = ab.get("defaults")
-        if not isinstance(defs, dict):
-            continue
-        am = defs.get("models")
-        if not isinstance(am, dict):
-            continue
-        for ref in am.keys():
-            if isinstance(ref, str) and ref.startswith(prefix):
-                return True
-    return False
-
-
 def _strip_agents_models_key_prefix(config: dict, prefix: str) -> int:
     """删除所有 agents.*.defaults.models 中以 prefix 开头的 ref（如供应商名/）。"""
     removed = 0
@@ -1350,20 +1330,17 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(provs, dict):
                     provs = {}
                     config["models"]["providers"] = provs
+                if p_name not in provs:
+                    raise ValueError(
+                        "只能删除在「接入配置」中自定义添加的供应商（须在 models.providers 中有该项）；"
+                        "内置或界面合成的供应商不可整项删除，请使用「移除」逐模型清理。"
+                    )
                 prefix = p_name + "/"
-                has_prov = p_name in provs
-                has_agent_refs = _any_agent_model_ref_starts_with(config, prefix)
-                if not has_prov and not has_agent_refs:
-                    raise ValueError(f"配置中未找到供应商「{p_name}」或其模型条目")
-                provider_snap = None
-                if has_prov:
-                    snap_raw = provs.get(p_name)
-                    if isinstance(snap_raw, dict):
-                        provider_snap = copy.deepcopy(snap_raw)
+                snap_raw = provs.get(p_name)
+                provider_snap = copy.deepcopy(snap_raw) if isinstance(snap_raw, dict) else None
                 stripped_models = _strip_agents_models_key_prefix(config, prefix)
                 removed_auth_profiles = _purge_auth_profiles_for_provider(config, p_name)
-                if has_prov:
-                    del provs[p_name]
+                del provs[p_name]
                 _repair_all_agent_model_routing(config, prefix)
                 save_meta = save_config_with_validation(config)
                 removed_cred_files: list[str] = []
