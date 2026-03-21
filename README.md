@@ -27,26 +27,31 @@
 
 ## 安装并启动
 
+### 人类：一键命令（仅此一条）
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | bash
 ```
 
-安装结束终端里会提示 **`操作手册.md`** 与 **「给 OpenClaw 的排障提示词」** 路径；遇问题时优先按提示操作。
+无 **git**：`curl …/install.sh | USE_GIT=0 bash`。装完终端会提示 **`操作手册.md`** 路径；排障见 **[操作手册.md](./操作手册.md)**。
 
-无 **git** 时：
+### 智能体：安装 / 排障短提示词
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | USE_GIT=0 bash
+把下面代码框内**整段**粘贴到 **OpenClaw（或助手）**，**下一行**写报错或现象；**勿**贴 Token、密钥。与 **[给OpenClaw的部署排障提示词.md](./给OpenClaw的部署排障提示词.md)**「智能体用」正文一致（改一处请两处同步）。
+
 ```
+任务：协助安装或排查 OpenClaw Model Admin（仅 GNU/Linux）。
 
-### 给 OpenClaw 智能体：部署排障提示词
+人类安装命令（让用户在本机 Linux 执行）：
+curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | bash
+无 git：curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | USE_GIT=0 bash
+装完默认 ~/openclaw-model-admin；数据不在 ~/.openclaw 则在安装目录 .env 设 OPENCLAW_HOME 或 OPENCLAW_CONFIG_PATH（start.sh 会加载 .env）。
 
-一键装好后，把 **[给OpenClaw的部署排障提示词.md](./给OpenClaw的部署排障提示词.md)** 里 **「【复制区域开始】」至「【复制区域结束】」** 的**整段**粘贴到 OpenClaw 对话，**再另起一行**描述现象（报错原文、是否 Docker、是否 systemd 等），便于智能体按项目约束自动排查。**勿**粘贴 Token、API Key、私钥。
+项目要点：Python≥3.10；面板须读写网关正在用的那份 openclaw.json（与网关同 Unix 用户或 .env 显式路径）；保存会跑 openclaw config validate，无 CLI 可设 OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE=1；重启网关默认 systemctl，否则 OPENCLAW_GATEWAY_RESTART_COMMAND；Docker 里访问宿主机网关勿用 127.0.0.1。
 
-未克隆仓库时，可先拉取全文到本地查看或转发：
+请你先用只读命令确认 uname -s、python3 版本、whoami、openclaw.json 路径与权限、是否在容器、command -v openclaw、面板端口默认 8765、systemctl/ss，再给可执行修复步骤；不要索要密钥。细则：https://github.com/LuTianTian001/openclaw-model-admin/blob/main/操作手册.md
 
-```bash
-curl -fsSL 'https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/给OpenClaw的部署排障提示词.md'
+用户现象：
 ```
 
 数据不在 `~/.openclaw`：在安装目录编辑 **`.env`**（`start.sh` 会自动加载；一键安装若检测到无 `.env` 会从 **`.env.example`** 复制一份模板）。变量说明见下表、**`.env.example`** 与 **操作手册 §5、§10**。

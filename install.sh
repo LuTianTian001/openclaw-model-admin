@@ -127,13 +127,6 @@ if [[ "$INSTALL_COPY_ENV" == "1" ]] && [[ ! -f .env ]] && [[ -f .env.example ]];
   echo "[install] 已复制 .env.example -> .env（可按需编辑；说明见 操作手册.md）"
 fi
 
-echo "[install] 人类文档: 操作手册.md → https://github.com/$REPO/blob/$BRANCH/操作手册.md"
-PROMPT_FILE="给OpenClaw的部署排障提示词.md"
-if [[ -f "$PROMPT_FILE" ]]; then
-  echo "[install] OpenClaw 智能体排障: 请把下面文件【复制区域】全文贴进 OpenClaw 对话，再描述现象 —"
-  echo "         $(pwd)/$PROMPT_FILE"
-  echo "         网页: https://github.com/$REPO/blob/$BRANCH/$PROMPT_FILE"
-  echo "         下载全文: curl -fsSL 'https://raw.githubusercontent.com/$REPO/$BRANCH/$PROMPT_FILE'"
-fi
+echo "[install] 手册: https://github.com/$REPO/blob/$BRANCH/操作手册.md | 智能体短提示词: README「智能体」代码块 或 $(pwd)/给OpenClaw的部署排障提示词.md"
 echo "[install] 启动 http://127.0.0.1:${OPENCLAW_MODEL_ADMIN_PORT:-8765}"
 exec ./start.sh
