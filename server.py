@@ -21,12 +21,19 @@ def _path_from_env(var_name: str, default: Path) -> Path:
     return Path(raw).expanduser()
 
 
-# 默认与官方 OpenClaw 一致：当前用户家目录下的 ~/.openclaw/
+# 默认与官方 OpenClaw 一致：~/.openclaw/openclaw.json；未显式指定时会话库随配置文件目录推导（agents/main/sessions/sessions.json）
 _HOME_OPENCLAW = Path.home() / ".openclaw"
-CONFIG_PATH = _path_from_env("OPENCLAW_CONFIG_PATH", _HOME_OPENCLAW / "openclaw.json")
+_DEFAULT_CONFIG = _HOME_OPENCLAW / "openclaw.json"
+CONFIG_PATH = _path_from_env("OPENCLAW_CONFIG_PATH", _DEFAULT_CONFIG)
+
+
+def _default_sessions_path_for_config(config_path: Path) -> Path:
+    return config_path.parent / "agents" / "main" / "sessions" / "sessions.json"
+
+
 SESSION_STORE_PATH = _path_from_env(
     "OPENCLAW_SESSIONS_PATH",
-    _HOME_OPENCLAW / "agents" / "main" / "sessions" / "sessions.json",
+    _default_sessions_path_for_config(CONFIG_PATH),
 )
 SERVICE_NAME = os.environ.get("OPENCLAW_GATEWAY_SERVICE", "openclaw-gateway.service").strip() or "openclaw-gateway.service"
 HOST = os.environ.get("OPENCLAW_MODEL_ADMIN_HOST", "0.0.0.0")

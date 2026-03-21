@@ -24,7 +24,7 @@
 
 - **Python 3.10+**（推荐 3.12）
 - 本机已安装 **`openclaw`** 且可在 PATH 中执行（用于保存配置前的校验）
-- 已存在 OpenClaw 数据目录（默认 `~/.openclaw/`）及 `openclaw.json`、会话库 `agents/main/sessions/sessions.json`
+- 已存在 OpenClaw 数据目录（默认当前运行用户的 `~/.openclaw/`，内含 `openclaw.json`；**请用与网关相同的用户**运行本面板，以便读写同一份配置与会话）
 - Linux 上若使用「重启网关」按钮，需有 **systemd** 及对应单元（默认可通过环境变量改名）
 
 ---
@@ -34,7 +34,7 @@
 | 变量 | 说明 | 默认 |
 |------|------|------|
 | `OPENCLAW_CONFIG_PATH` | `openclaw.json` 绝对路径 | `~/.openclaw/openclaw.json` |
-| `OPENCLAW_SESSIONS_PATH` | `sessions.json` 绝对路径 | `~/.openclaw/agents/main/sessions/sessions.json` |
+| `OPENCLAW_SESSIONS_PATH` | `sessions.json` 绝对路径 | **自动**：`<openclaw.json 所在目录>/agents/main/sessions/sessions.json`（与仅改 `OPENCLAW_CONFIG_PATH` 时联动） |
 | `OPENCLAW_GATEWAY_SERVICE` | systemd 服务名 | `openclaw-gateway.service` |
 | `OPENCLAW_MODEL_ADMIN_HOST` | 监听地址 | `0.0.0.0` |
 | `OPENCLAW_MODEL_ADMIN_PORT` | 端口 | `8765` |
@@ -43,21 +43,37 @@
 
 ---
 
-## 快速开始（本机）
+## 一键安装并启动（推荐）
+
+本机需已安装 **git**、**Python 3.10+**，且已按 OpenClaw 官方方式初始化过 **`~/.openclaw/`**（含 `openclaw.json`）。**不必**手动填 `sessions` 路径：只要 `openclaw.json` 在默认位置，程序会自动使用同目录下的 `agents/main/sessions/sessions.json`。
 
 ```bash
-git clone <你的仓库地址> openclaw-model-admin
+curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | bash
+```
+
+自定义安装目录或 fork 仓库：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | INSTALL_DIR=~/my-admin REPO=你的用户名/openclaw-model-admin bash
+```
+
+---
+
+## 快速开始（手动克隆）
+
+```bash
+git clone https://github.com/LuTianTian001/openclaw-model-admin.git
 cd openclaw-model-admin
 
-# 可选：自定义路径
-export OPENCLAW_CONFIG_PATH="$HOME/.openclaw/openclaw.json"
-export OPENCLAW_SESSIONS_PATH="$HOME/.openclaw/agents/main/sessions/sessions.json"
+# 仅当 openclaw.json 不在 ~/.openclaw/ 时才需要：
+# export OPENCLAW_CONFIG_PATH="/你的路径/openclaw.json"
+# （sessions 会自动跟配置文件目录走，一般不必再设 OPENCLAW_SESSIONS_PATH）
 
 chmod +x start.sh
 ./start.sh
 ```
 
-浏览器打开：`http://127.0.0.1:8765`（若监听 `0.0.0.0` 可用本机局域网 IP 访问）。
+浏览器打开：`http://127.0.0.1:8765`（监听 `0.0.0.0` 时可用本机局域网 IP）。
 
 ---
 
@@ -67,7 +83,7 @@ chmod +x start.sh
 
 ```bash
 cp docker-compose.example.yml docker-compose.yml
-# 编辑 volumes 指向你宿主机上的 openclaw.json 与 sessions.json
+# 将 volumes 里的 /path/on/host/.openclaw 换成你宿主机上的 OpenClaw 数据目录（整个文件夹挂载）
 docker compose up --build
 ```
 
