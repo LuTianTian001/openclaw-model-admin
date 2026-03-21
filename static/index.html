@@ -150,6 +150,13 @@
       <div class="route-card">
         <div class="route-title" id="addTabTitle">接入新供应商</div>
         <div style="display:grid; gap:10px;">
+          <div class="form-group">
+            <label>复用已有供应商</label>
+            <select id="reuseProviderSelect" style="width:100%; height:44px; font-size:15px!important; padding:10px 14px;" title="选中后自动填入名称、地址、认证与接口类型；密钥请按需填写；只需再填下方模型 ID / 显示名" onchange="applyReuseProvider()">
+              <option value="">（选一项以复用，无需重复填供应商信息）</option>
+            </select>
+            <small style="display:block; margin-top:6px; font-size:11px; color:var(--claude-muted); line-height:1.45;">同一供应商加新型号时：先在此选择供应商，再只填「模型 ID」「显示名」即可点保存。</small>
+          </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
             <div class="form-group"><label>名称</label><input id="provider"></div>
             <div class="form-group"><label>地址</label><input id="baseUrl" oninput="autoDetectApiType(this.value)"></div>
@@ -202,6 +209,9 @@
     }
     function escHtml(s) {
       return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
+    function escAttr(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     }
     function groupedModels() { const g = new Map(); (state?.models || []).forEach(m => { if(!g.has(m.provider)) g.set(m.provider, []); g.get(m.provider).push(m); }); return Array.from(g.entries()).map(([p, models]) => ({ provider:p, models })); }
     function populate(prefix, ref) {
@@ -385,8 +395,19 @@
       document.getElementById('providerSections').innerHTML = groupedModels().map(g => {
         const pData = state.providers.find(p => p.name === g.provider);
         const isOAuth = pData && pData.auth === 'oauth';
-        return `<details class="collapsible"><summary><span>${escHtml(g.provider)}</span><span style="font-weight:400; font-size:11px; color:var(--claude-muted)">${g.models.length} 模型</span></summary><div class="collapsible-content">${g.models.map(m => `<div class="model-item"><div><strong>${escHtml(m.name || m.id)}<span class="think-suffix"> · 思考 ${escHtml(thinkingTierOf(m))}</span></strong>${m.ref===state.primary?'<span class="badge active">默认</span>':''}<br><small style="color:var(--claude-muted); font-size:12px;">${escHtml(m.ref)}</small></div><div style="display:flex; gap:8px;">${isOAuth ? '' : `<button class="ghost" style="height:36px; padding:0 12px; font-size:13px;" onclick="prefillModel('${m.ref}')">配置</button>`}<button class="ghost" style="height:36px; padding:0 12px; font-size:13px; color:var(--claude-danger)" id="delBtn_${m.ref.replace('/','_').replace('.','_')}" onclick="deleteModel('${m.ref}')">移除</button></div></div>`).join('')}</div></details>`;
+        return `<details class="collapsible"><summary><span>${escHtml(g.provider)}</span><span style="font-weight:400; font-size:11px; color:var(--claude-muted)">${g.models.length} 模型</span></summary><div class="collapsible-content"><div style="margin-bottom:10px;"><button type="button" class="ghost" style="height:36px; padding:0 14px; font-size:13px;" onclick='reuseProviderFromLibrary(${JSON.stringify(g.provider)})'>复用此供应商再加模型</button></div>${g.models.map(m => `<div class="model-item"><div><strong>${escHtml(m.name || m.id)}<span class="think-suffix"> · 思考 ${escHtml(thinkingTierOf(m))}</span></strong>${m.ref===state.primary?'<span class="badge active">默认</span>':''}<br><small style="color:var(--claude-muted); font-size:12px;">${escHtml(m.ref)}</small></div><div style="display:flex; gap:8px;">${isOAuth ? '' : `<button class="ghost" style="height:36px; padding:0 12px; font-size:13px;" onclick="prefillModel('${m.ref}')">配置</button>`}<button class="ghost" style="height:36px; padding:0 12px; font-size:13px; color:var(--claude-danger)" id="delBtn_${m.ref.replace('/','_').replace('.','_')}" onclick="deleteModel('${m.ref}')">移除</button></div></div>`).join('')}</div></details>`;
       }).join('') || '<p style="text-align:center; color:var(--claude-muted)">暂无配置</p>';
+      refreshReuseProviderSelect();
+    }
+
+    function reuseProviderFromLibrary(providerName) {
+      if (!providerName || !state) return;
+      const sel = document.getElementById('reuseProviderSelect');
+      if (sel) {
+        sel.value = providerName;
+        applyReuseProvider();
+      }
+      document.querySelectorAll('.tab-btn')[2].click();
     }
 
     async function refresh() {
@@ -436,10 +457,48 @@
       } catch(e) { setLoading('saveBtn', false, { error: true }); }
     }
     
+    function refreshReuseProviderSelect() {
+      const sel = document.getElementById('reuseProviderSelect');
+      if (!sel || !state || !state.providers) return;
+      const prev = sel.value;
+      const list = state.providers.filter((p) => p && p.name);
+      sel.innerHTML = '<option value="">（选一项以复用，无需重复填供应商信息）</option>' +
+        list.map((p) => `<option value="${escAttr(p.name)}">${escHtml(p.name)} · ${p.modelCount != null ? p.modelCount : 0} 个模型</option>`).join('');
+      if (prev && list.some((x) => x.name === prev)) sel.value = prev;
+    }
+
+    /** 从已有供应商带入连接信息，仅留模型 ID/名称给用户填 */
+    function applyReuseProvider() {
+      const sel = document.getElementById('reuseProviderSelect');
+      const name = sel && sel.value;
+      if (!name || !state) return;
+      const p = state.providers.find((x) => x.name === name);
+      if (!p) return;
+      document.getElementById('provider').value = p.name;
+      const bu = (p.baseUrl || '').trim();
+      document.getElementById('baseUrl').value = bu && !bu.startsWith('(') ? bu : '';
+      document.getElementById('auth').value = p.auth === 'oauth' ? '' : (p.auth || 'api-key');
+      document.getElementById('api').value = p.api || 'openai-completions';
+      document.getElementById('apiKey').value = '';
+      document.getElementById('modelId').value = '';
+      document.getElementById('modelName').value = '';
+      document.getElementById('thinkingEnabled').value = 'off';
+      document.getElementById('thinkingValue').value = 'low';
+      syncThinkingRow();
+      document.getElementById('contextWindow').value = '200000';
+      document.getElementById('maxTokens').value = '8192';
+      autoDetectApiType(document.getElementById('baseUrl').value);
+      document.getElementById('addTabTitle').innerText = '同供应商新增 · ' + p.name;
+      document.getElementById('cancelEditBtn').style.display = 'flex';
+      document.getElementById('modelId').focus();
+    }
+
     function prefillModel(ref) {
       const model = state.models.find(m => m.ref === ref);
       if (!model) return;
       const provider = state.providers.find(p => p.name === model.provider);
+      const rs = document.getElementById('reuseProviderSelect');
+      if (rs) rs.value = '';
       document.getElementById('provider').value = model.provider;
       document.getElementById('baseUrl').value = (provider && !provider.baseUrl.includes('(')) ? provider.baseUrl : '';
       document.getElementById('modelId').value = model.id;
@@ -458,10 +517,13 @@
       document.querySelectorAll('.tab-btn')[2].click();
     }
     function cancelEdit() {
+      const rs = document.getElementById('reuseProviderSelect');
+      if (rs) rs.value = '';
       document.getElementById('provider').value = '';
       document.getElementById('baseUrl').value = '';
       document.getElementById('modelId').value = '';
       document.getElementById('modelName').value = '';
+      document.getElementById('apiKey').value = '';
       document.getElementById('thinkingEnabled').value = 'off';
       document.getElementById('thinkingValue').value = 'low';
       syncThinkingRow();
