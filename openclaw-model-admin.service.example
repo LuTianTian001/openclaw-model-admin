@@ -1,0 +1,26 @@
+# 复制到 systemd（示例路径，请按发行版调整）：
+#   sudo cp openclaw-model-admin.service.example /etc/systemd/system/openclaw-model-admin.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now openclaw-model-admin
+#
+# 重要：User= 必须与运行 OpenClaw 网关的 Unix 用户一致，否则读写到另一份 ~/.openclaw。
+
+[Unit]
+Description=OpenClaw Model Admin Web Panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# User=openclaw
+WorkingDirectory=/home/CHANGE_ME/openclaw-model-admin
+Environment=OPENCLAW_HOME=/home/CHANGE_ME/.openclaw
+# Environment=OPENCLAW_GATEWAY_RESTART_COMMAND=/usr/bin/systemctl restart openclaw-gateway.service
+# Environment=OPENCLAW_GATEWAY_HEALTH_URL=http://127.0.0.1:18789/
+Environment=OPENCLAW_MODEL_ADMIN_HOST=127.0.0.1
+Environment=OPENCLAW_MODEL_ADMIN_PORT=8765
+ExecStart=/usr/bin/python3 /home/CHANGE_ME/openclaw-model-admin/server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

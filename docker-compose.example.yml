@@ -8,6 +8,9 @@ services:
     environment:
       OPENCLAW_CONFIG_PATH: /data/openclaw/openclaw.json
       # OPENCLAW_SESSIONS_PATH: /data/openclaw/agents/main/sessions/sessions.json
-      # OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE: "1"
+      OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE: "1"
+      # 网关在宿主机时：填宿主机 IP + 端口，勿用 127.0.0.1（会指到容器内）
+      # OPENCLAW_GATEWAY_HEALTH_URL: http://192.168.1.10:18789/
+      # OPENCLAW_GATEWAY_RESTART_COMMAND: "docker restart openclaw-gateway"
     volumes:
       - /path/on/host/.openclaw:/data/openclaw:rw

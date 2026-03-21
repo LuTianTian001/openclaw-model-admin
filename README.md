@@ -33,9 +33,13 @@
 
 | 变量 | 说明 | 默认 |
 |------|------|------|
-| `OPENCLAW_CONFIG_PATH` | `openclaw.json` 绝对路径 | `~/.openclaw/openclaw.json` |
-| `OPENCLAW_SESSIONS_PATH` | `sessions.json` 绝对路径 | **自动**：`<openclaw.json 所在目录>/agents/main/sessions/sessions.json`（与仅改 `OPENCLAW_CONFIG_PATH` 时联动） |
-| `OPENCLAW_GATEWAY_SERVICE` | systemd 服务名 | `openclaw-gateway.service` |
+| `OPENCLAW_HOME` | OpenClaw 数据根目录（其下为 `openclaw.json`、`agents/` 等）；与 `OPENCLAW_CONFIG_PATH` 二选一即可，**显式配置路径优先** | 未设置则用 `~/.openclaw` 推导默认 `openclaw.json` |
+| `OPENCLAW_CONFIG_PATH` | `openclaw.json` 绝对路径 | `OPENCLAW_HOME/openclaw.json` 或 `~/.openclaw/openclaw.json` |
+| `OPENCLAW_SESSIONS_PATH` | `sessions.json` 绝对路径 | **自动**：`<openclaw.json 所在目录>/agents/main/sessions/sessions.json` |
+| `OPENCLAW_GATEWAY_SERVICE` | systemd 服务名（仅在未设 `OPENCLAW_GATEWAY_RESTART_COMMAND` 时用于重启与状态） | `openclaw-gateway.service` |
+| `OPENCLAW_GATEWAY_RESTART_COMMAND` | **非 systemd** 或 **Docker 内重启宿主机网关** 时：由 shell 执行的一条命令（如 `sudo systemctl restart openclaw-gateway.service`、`docker restart 容器名`） | 未设置则用 `systemctl restart` |
+| `OPENCLAW_GATEWAY_HEALTH_URL` | 网关 HTTP(S) 地址，用于**状态与自定义重启后的就绪探测**（标准库 `urllib`，镜像内无需 curl） | 未设置则尝试 `systemctl is-active`，再回退 `ss` 匹配端口 |
+| `OPENCLAW_GATEWAY_SS_MARKERS` | 无健康 URL 且无法 `systemctl` 时，在 `ss -ltn` 输出中匹配的子串，逗号分隔 | `127.0.0.1:18789,[::1]:18789` |
 | `OPENCLAW_MODEL_ADMIN_HOST` | 监听地址 | `0.0.0.0` |
 | `OPENCLAW_MODEL_ADMIN_PORT` | 端口 | `8765` |
 | `OPENCLAW_MODEL_ADMIN_PREFS_PATH` | 面板自用偏好（推理展示等） | 项目目录下 `admin-prefs.json` |
@@ -43,19 +47,45 @@
 
 ---
 
+## 困难与对策（部署前扫一眼）
+
+| 困难 | 对策 |
+|------|------|
+| 机器上没有 **git** | `USE_GIT=0`：用 GitHub 源码包 + `tar`（需 **curl 或 wget**）；有 **rsync** 时同步更稳 |
+| 网关数据不在 `~/.openclaw` | 设置 **`OPENCLAW_HOME`**（推荐）或 **`OPENCLAW_CONFIG_PATH`**；可写入安装目录 **`.env`**，`start.sh` 会自动加载 |
+| 面板用户与网关用户不一致 | 用**同一 Unix 用户**运行面板（或 systemd 里 `User=` 与网关一致）；否则读写的是另一份主目录 |
+| 没有 **`openclaw` CLI** | 安装 CLI，或 **`OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE=1`**（生产自行评估） |
+| 没有 **systemd** / 「重启网关」无效 | 设置 **`OPENCLAW_GATEWAY_RESTART_COMMAND`**（由面板进程用户执行）；若需验证恢复，同时设 **`OPENCLAW_GATEWAY_HEALTH_URL`**（自定义重启时强烈建议） |
+| 网关监听**非默认端口** | 设置 **`OPENCLAW_GATEWAY_HEALTH_URL`**，或 **`OPENCLAW_GATEWAY_SS_MARKERS`** 为 `127.0.0.1:你的端口` 等子串 |
+| **Docker** 跑面板、网关在宿主机 | 挂载**整目录** `.openclaw`；一般 **`SKIP_VALIDATE=1`**；重启命令可用 **`OPENCLAW_GATEWAY_RESTART_COMMAND`** 调宿主机（需挂载 socket 或 SSH，依你的编排而定） |
+| 端口 **8765** 被占用 | **`OPENCLAW_MODEL_ADMIN_PORT`** 改为空闲端口 |
+| `curl \| bash` 环境变量不生效 | 用 `bash -s` 并前置导出：`curl ... \| OPENCLAW_HOME=/var/lib/openclaw bash -s` 或先写入安装目录 `.env` 再 `./start.sh` |
+
+---
+
 ## 一键安装并启动（推荐）
 
-本机需已安装 **git**、**Python 3.10+**，且已按 OpenClaw 官方方式初始化过 **`~/.openclaw/`**（含 `openclaw.json`）。**不必**手动填 `sessions` 路径：只要 `openclaw.json` 在默认位置，程序会自动使用同目录下的 `agents/main/sessions/sessions.json`。
+本机需 **Python 3.10+**。默认用 **git** 克隆；若未安装 git，见下一节 **`USE_GIT=0`**。**不必**手动填 `sessions` 路径：程序按 `openclaw.json` 所在目录推导 `agents/main/sessions/sessions.json`。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | bash
 ```
 
-自定义安装目录或 fork 仓库：
+**无 git**（仅需 curl/wget + tar）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | USE_GIT=0 bash
+```
+
+自定义安装目录、fork 仓库、或指定 OpenClaw 数据根目录：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | INSTALL_DIR=~/my-admin REPO=你的用户名/openclaw-model-admin bash
+# 或指定数据根目录（等价于 openclaw.json 在 $OPENCLAW_HOME/openclaw.json）：
+curl -fsSL https://raw.githubusercontent.com/LuTianTian001/openclaw-model-admin/main/install.sh | OPENCLAW_HOME=/你的/.openclaw bash
 ```
+
+安装脚本会：**检查 Python 版本**、**提示**未找到的配置文件与 `openclaw` CLI（不强制中断，便于先装面板再补环境）。`SKIP_OPENCLAW_CHECK=1` 可关闭 CLI 提示。
 
 ---
 
@@ -75,6 +105,10 @@ chmod +x start.sh
 
 浏览器打开：`http://127.0.0.1:8765`（监听 `0.0.0.0` 时可用本机局域网 IP）。
 
+### 作为 systemd 服务常驻（可选）
+
+仓库内 **`openclaw-model-admin.service.example`**：复制后修改 `User=`、`WorkingDirectory=`、`OPENCLAW_HOME` 等，再 `systemctl enable --now`。与网关**同一用户**、同一 `OPENCLAW_HOME` 最关键。
+
 ---
 
 ## 使用 Docker（可选）
@@ -86,6 +120,8 @@ cp docker-compose.example.yml docker-compose.yml
 # 将 volumes 里的 /path/on/host/.openclaw 换成你宿主机上的 OpenClaw 数据目录（整个文件夹挂载）
 docker compose up --build
 ```
+
+容器内通常没有 `openclaw` CLI，故示例中保留 **`OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE`** 说明。若网关跑在宿主机且希望面板里点「重启」，需在 compose 里配置 **`OPENCLAW_GATEWAY_RESTART_COMMAND`**（例如挂载 `docker.sock` 后 `docker restart …`，或 `ssh` 到宿主机执行 `systemctl`——具体取决于你的安全模型），并设置 **`OPENCLAW_GATEWAY_HEALTH_URL`** 指向宿主机可达的网关地址（勿用 `127.0.0.1` 指容器自身）。
 
 ---
 

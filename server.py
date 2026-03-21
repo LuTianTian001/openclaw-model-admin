@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,8 +23,15 @@ def _path_from_env(var_name: str, default: Path) -> Path:
 
 
 # 默认与官方 OpenClaw 一致：~/.openclaw/openclaw.json；未显式指定时会话库随配置文件目录推导（agents/main/sessions/sessions.json）
-_HOME_OPENCLAW = Path.home() / ".openclaw"
-_DEFAULT_CONFIG = _HOME_OPENCLAW / "openclaw.json"
+def _default_openclaw_config_path() -> Path:
+    """默认 openclaw.json：OPENCLAW_HOME 优先，否则 ~/.openclaw/openclaw.json。"""
+    raw = os.environ.get("OPENCLAW_HOME", "").strip()
+    if raw:
+        return Path(raw).expanduser() / "openclaw.json"
+    return Path.home() / ".openclaw" / "openclaw.json"
+
+
+_DEFAULT_CONFIG = _default_openclaw_config_path()
 CONFIG_PATH = _path_from_env("OPENCLAW_CONFIG_PATH", _DEFAULT_CONFIG)
 
 
@@ -198,6 +206,62 @@ def run_command(args, timeout=5):
         return {"ok": result.returncode == 0, "stdout": result.stdout.strip(), "stderr": result.stderr.strip(), "code": result.returncode}
     except Exception as e:
         return {"ok": False, "stdout": "", "stderr": str(e), "code": -1}
+
+
+def _gateway_health_url() -> str:
+    return os.environ.get("OPENCLAW_GATEWAY_HEALTH_URL", "").strip()
+
+
+def _gateway_ss_markers() -> list[str]:
+    raw = os.environ.get("OPENCLAW_GATEWAY_SS_MARKERS", "").strip()
+    if raw:
+        return [x.strip() for x in raw.split(",") if x.strip()]
+    return ["127.0.0.1:18789", "[::1]:18789"]
+
+
+def _probe_http_url(url: str) -> bool:
+    """用标准库探测 HTTP(S)，不依赖 curl（Docker slim 友好）；失败时再尝试 curl。"""
+    try:
+        from urllib.error import HTTPError
+        from urllib.request import Request, urlopen
+
+        req = Request(url, method="HEAD", headers={"User-Agent": "openclaw-model-admin"})
+        try:
+            with urlopen(req, timeout=3) as resp:
+                code = getattr(resp, "status", None) or resp.getcode()
+                return code is not None and int(code) < 500
+        except HTTPError as e:
+            return int(e.code) < 500
+    except Exception:
+        pass
+    try:
+        from urllib.request import urlopen
+
+        with urlopen(url, timeout=3) as resp:
+            code = getattr(resp, "status", None) or resp.getcode()
+            return code is not None and int(code) < 500
+    except Exception:
+        pass
+    r = run_command(
+        ["curl", "-sf", "--max-time", "3", "-o", "/dev/null", url],
+        timeout=6,
+    )
+    return bool(r.get("ok"))
+
+
+def probe_gateway_active() -> bool:
+    """判断网关是否在线：优先 HTTP(S) 健康 URL，其次 systemd，再 ss 端口特征。"""
+    url = _gateway_health_url()
+    if url:
+        return _probe_http_url(url)
+    st = run_command(["systemctl", "is-active", SERVICE_NAME], timeout=5)
+    if st.get("ok"):
+        return st.get("stdout") == "active"
+    pr = run_command(["ss", "-ltn"], timeout=5)
+    if pr.get("ok"):
+        out = pr.get("stdout") or ""
+        return any(m in out for m in _gateway_ss_markers())
+    return True
 
 def _session_key_label(session_key: str) -> str:
     if session_key == MAIN_SESSION_KEY:
@@ -739,17 +803,7 @@ def build_state():
     if config_issues:
         config_issues = list(dict.fromkeys(config_issues))
 
-    gateway_status = run_command(["systemctl", "is-active", SERVICE_NAME], timeout=5)
-    if gateway_status.get("ok"):
-        gateway_active = gateway_status.get("stdout") == "active"
-    else:
-        # 某些受限环境无法调用 systemctl，回退到端口探测，避免误报离线
-        gateway_port_probe = run_command(["ss", "-ltn"], timeout=5)
-        if gateway_port_probe.get("ok"):
-            gateway_active = "127.0.0.1:18789" in (gateway_port_probe.get("stdout") or "") or "[::1]:18789" in (gateway_port_probe.get("stdout") or "")
-        else:
-            # 如果健康探测本身因权限受限失败，避免把“未知”误判成“离线”
-            gateway_active = True
+    gateway_active = probe_gateway_active()
     active_chat = resolve_active_chat_session(config)
     session_previews = build_session_previews(config)
 
@@ -931,12 +985,30 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 self._send_json({"ok": True, "results": results, "timestamp": datetime.now().strftime("%H:%M:%S")})
             elif path == "/api/restart":
-                restart = run_command(["systemctl", "restart", SERVICE_NAME], timeout=20)
-                if not restart.get("ok"):
-                    raise RuntimeError(restart.get("stderr") or restart.get("stdout") or "重启失败")
-                active = run_command(["systemctl", "is-active", SERVICE_NAME], timeout=5).get("stdout")
-                if active != "active":
-                    raise RuntimeError(f"重启后服务状态异常: {active or 'unknown'}")
+                custom = os.environ.get("OPENCLAW_GATEWAY_RESTART_COMMAND", "").strip()
+                if custom:
+                    restart = run_command(["/bin/sh", "-lc", custom], timeout=90)
+                    if not restart.get("ok"):
+                        err = (restart.get("stderr") or restart.get("stdout") or "").strip() or "重启命令失败"
+                        raise RuntimeError(err)
+                    if _gateway_health_url():
+                        ok = False
+                        for _ in range(30):
+                            if probe_gateway_active():
+                                ok = True
+                                break
+                            time.sleep(0.5)
+                        if not ok:
+                            raise RuntimeError(
+                                "已执行 OPENCLAW_GATEWAY_RESTART_COMMAND，但在 OPENCLAW_GATEWAY_HEALTH_URL 上未探测到恢复，请检查命令与 URL"
+                            )
+                else:
+                    restart = run_command(["systemctl", "restart", SERVICE_NAME], timeout=20)
+                    if not restart.get("ok"):
+                        raise RuntimeError(restart.get("stderr") or restart.get("stdout") or "重启失败")
+                    active = run_command(["systemctl", "is-active", SERVICE_NAME], timeout=5).get("stdout")
+                    if active != "active":
+                        raise RuntimeError(f"重启后服务状态异常: {active or 'unknown'}")
                 self._send_json({"ok": True, "state": build_state()})
             elif path == "/api/session-align":
                 # 与页头「同步」一致：只读当前磁盘配置与会话快照，不写 openclaw.json / sessions.json、不重启（请求体忽略）
