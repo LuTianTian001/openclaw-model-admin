@@ -586,6 +586,144 @@ def _effective_model_ref_for_session(raw: dict, primary: str) -> tuple:
     return (ref if ref else "—", False)
 
 
+def _primary_ref_from_config(config: dict) -> str:
+    try:
+        p = (config.get("agents") or {}).get("defaults", {}).get("model", {}).get("primary") or ""
+        return p.strip() if isinstance(p, str) else ""
+    except Exception:
+        return ""
+
+
+def _safe_positive_int(val) -> int | None:
+    if val is None or isinstance(val, bool):
+        return None
+    if isinstance(val, int):
+        return val if val > 0 else None
+    if isinstance(val, float):
+        i = int(val)
+        return i if i > 0 else None
+    if isinstance(val, str) and val.strip():
+        try:
+            i = int(val.strip().replace(",", ""), 10)
+            return i if i > 0 else None
+        except ValueError:
+            return None
+    return None
+
+
+def _positive_int_from_payload(val, default: int) -> int:
+    """
+    解析前端提交的 contextWindow / maxTokens。
+    JSON null、前端 NaN 序列化、空串、非数字等一律回落 default，避免 int(None) 导致 400。
+    """
+    if default <= 0:
+        raise ValueError("default 须为正整数")
+    x = _safe_positive_int(val)
+    return x if x is not None else default
+
+
+def _model_limits_from_config_providers(config: dict, ref: str) -> tuple[int | None, int | None]:
+    """
+    从 openclaw.json 的 models.providers[*].models[] 取该 ref 的 contextWindow、maxTokens。
+    内置/仅存在于合并 catalog 的 ref 若无独立 provider 块则返回 (None, None)。
+    """
+    if not ref or ref.strip() in ("—", "") or "/" not in ref:
+        return None, None
+    ref_n = normalize_model_ref_provider_lower(ref.strip())
+    prov_id, _, mid = ref_n.partition("/")
+    mid = mid.strip()
+    prov_id = normalize_provider_id(prov_id.strip())
+    if not prov_id or not mid:
+        return None, None
+    provs = (config.get("models") or {}).get("providers")
+    if not isinstance(provs, dict):
+        return None, None
+    pk = resolve_provider_key_in_provs(provs, prov_id)
+    if not pk:
+        return None, None
+    block = provs.get(pk)
+    if not isinstance(block, dict):
+        return None, None
+    for m in block.get("models") or []:
+        if not isinstance(m, dict):
+            continue
+        mid_c = m.get("id")
+        if not isinstance(mid_c, str) or mid_c.strip() != mid:
+            continue
+        cw = _safe_positive_int(m.get("contextWindow"))
+        mt = _safe_positive_int(m.get("maxTokens"))
+        return cw, mt
+    return None, None
+
+
+def sync_all_sessions_context_tokens_from_config(config: dict) -> dict:
+    """
+    按当前磁盘逻辑：用各会话 effective ref 在 models.providers 里的 contextWindow，
+    覆盖写入 sessions.json 的 contextTokens（与 OpenClaw 优先读 entry.contextTokens 的行为对齐）。
+    在 providers 中找不到该 ref 时删除 contextTokens，回落到 OpenClaw 合并模型表/内置默认值。
+    maxTokens 仅存在于模型定义，由 openclaw.json 合并进 catalog，无需写入会话文件。
+    """
+    if not SESSION_STORE_PATH.exists():
+        return {"ok": False, "error": "sessions.json 不存在", "path": str(SESSION_STORE_PATH)}
+
+    try:
+        store = json.loads(SESSION_STORE_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"ok": False, "error": f"读取 sessions.json 失败: {e}"}
+
+    if not isinstance(store, dict):
+        return {"ok": False, "error": "sessions 根节点应为对象"}
+
+    primary = _primary_ref_from_config(config)
+    updated = 0
+    removed = 0
+    for key, raw in store.items():
+        if key in ("global", "unknown") or not isinstance(raw, dict):
+            continue
+        ref, _via = _effective_model_ref_for_session(raw, primary)
+        cw, _mt = _model_limits_from_config_providers(config, ref)
+        if cw is not None:
+            if raw.get("contextTokens") != cw:
+                raw["contextTokens"] = cw
+                updated += 1
+        else:
+            if "contextTokens" in raw:
+                del raw["contextTokens"]
+                removed += 1
+
+    if updated == 0 and removed == 0:
+        return {
+            "ok": True,
+            "sessionsContextUpdated": 0,
+            "sessionsContextRemoved": 0,
+            "changed": False,
+        }
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = SESSION_STORE_PATH.parent / f"sessions.json.bak.ctxsync-{stamp}"
+    try:
+        shutil.copy2(SESSION_STORE_PATH, backup_path)
+    except Exception as e:
+        return {"ok": False, "error": f"备份 sessions.json 失败: {e}"}
+
+    try:
+        SESSION_STORE_PATH.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except Exception as e:
+        try:
+            shutil.copy2(backup_path, SESSION_STORE_PATH)
+        except Exception:
+            pass
+        return {"ok": False, "error": f"写入 sessions.json 失败（已尝试从备份恢复）: {e}"}
+
+    return {
+        "ok": True,
+        "sessionsContextUpdated": updated,
+        "sessionsContextRemoved": removed,
+        "changed": True,
+        "backupPath": str(backup_path),
+    }
+
+
 def _session_preview_priority(session_key: str) -> int:
     """管理端「当前聊天」预览：优先电报私聊（与多数用户看 /status 的会话一致），避免误选 cron/群等 updatedAt 更高的键。"""
     if ":telegram:direct:" in session_key:
@@ -1588,6 +1726,7 @@ class Handler(BaseHTTPRequestHandler):
                 web_telegram_sync = sync_web_session_from_telegram_direct()
                 # 思考只跟各模型在前端的 params.thinking：清掉所有会话 thinkingLevel，电报与网页均走配置
                 selection_extra_meta["sessionThinkingCleared"] = clear_session_thinking_levels()
+                selection_extra_meta["sessionContextSync"] = sync_all_sessions_context_tokens_from_config(config)
                 meta_out = {
                     "migrations": save_meta.get("migrations", []),
                     "sessionSync": session_sync,
@@ -1619,7 +1758,18 @@ class Handler(BaseHTTPRequestHandler):
                     if prev_reasoning is None:
                         prev_reasoning = True
                     # 勿写入 reasoningEffort：OpenClaw ModelDefinitionSchema 为 strict，会校验失败
-                    new_m = {"id": m_id, "name": payload.get("modelName") or m_id, "reasoning": prev_reasoning, "input": payload.get("inputs", ["text"]), "contextWindow": int(payload.get("contextWindow", 200000)), "maxTokens": int(payload.get("maxTokens", 8192))}
+                    cw = _positive_int_from_payload(payload.get("contextWindow"), 200000)
+                    mt = _positive_int_from_payload(payload.get("maxTokens"), 8192)
+                    if mt > cw:
+                        mt = cw
+                    new_m = {
+                        "id": m_id,
+                        "name": payload.get("modelName") or m_id,
+                        "reasoning": prev_reasoning,
+                        "input": payload.get("inputs", ["text"]),
+                        "contextWindow": cw,
+                        "maxTokens": mt,
+                    }
                     p["models"] = [m for m in p["models"] if m["id"] != m_id] + [new_m]
                 ref = normalize_model_ref_provider_lower(f"{p_name}/{m_id}")
                 models_map = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("models", {})
@@ -1659,6 +1809,7 @@ class Handler(BaseHTTPRequestHandler):
                 save_meta = save_config_with_validation(config)
                 if save_meta.get("migrations"):
                     meta_model.setdefault("migrations", save_meta["migrations"])
+                meta_model["sessionContextSync"] = sync_all_sessions_context_tokens_from_config(config)
                 cleared = clear_session_thinking_levels()
                 meta_model["sessionThinkingCleared"] = cleared
                 self._send_json({"ok": True, "state": build_state(), "meta": meta_model})
@@ -1691,9 +1842,20 @@ class Handler(BaseHTTPRequestHandler):
                             ):
                                 del am_del[k]
                                 break
-                save_config_with_validation(config)
+                save_meta_del = save_config_with_validation(config)
+                ctx_sync_del = sync_all_sessions_context_tokens_from_config(config)
                 cleared_del = clear_session_thinking_levels()
-                self._send_json({"ok": True, "state": build_state(), "meta": {"sessionThinkingCleared": cleared_del}})
+                self._send_json(
+                    {
+                        "ok": True,
+                        "state": build_state(),
+                        "meta": {
+                            "sessionThinkingCleared": cleared_del,
+                            "sessionContextSync": ctx_sync_del,
+                            "migrations": save_meta_del.get("migrations", []),
+                        },
+                    }
+                )
             elif path == "/api/provider/delete":
                 config = read_config()
                 p_raw = (payload.get("provider") or "").strip()
@@ -1727,6 +1889,7 @@ class Handler(BaseHTTPRequestHandler):
                     cpaths = _credential_file_paths_in_provider_block(provider_snap)
                     removed_cred_files = _unlink_provider_credential_files(cpaths, config)
                 sess_clean = _clear_sessions_overrides_for_provider(p_name)
+                ctx_sync_pv = sync_all_sessions_context_tokens_from_config(config)
                 cleared_pv = clear_session_thinking_levels()
                 self._send_json(
                     {
@@ -1734,6 +1897,7 @@ class Handler(BaseHTTPRequestHandler):
                         "state": build_state(),
                         "meta": {
                             "sessionThinkingCleared": cleared_pv,
+                            "sessionContextSync": ctx_sync_pv,
                             "migrations": save_meta.get("migrations", []),
                             "removedAgentModelEntries": stripped_models,
                             "removedAuthProfiles": removed_auth_profiles,
