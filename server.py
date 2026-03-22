@@ -2,15 +2,17 @@
 import copy
 import json
 import os
+import re
 import shutil
 import subprocess
+import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 try:
     import fcntl
@@ -61,6 +63,13 @@ HOST = os.environ.get("OPENCLAW_MODEL_ADMIN_HOST", "0.0.0.0")
 PORT = int(os.environ.get("OPENCLAW_MODEL_ADMIN_PORT", "8765"))
 MAIN_SESSION_KEY = "agent:main:main"
 
+# 管理端自报版本（仅用于页面展示，便于多台环境对照）
+PANEL_META_VERSION = os.environ.get("OPENCLAW_MODEL_ADMIN_VERSION", "1.2.0").strip() or "1.2.0"
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
 
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name, "").strip()
@@ -70,6 +79,14 @@ def _env_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+# OpenClaw CLI 远端版本缓存（npm），默认 12 小时刷新；展开「本机信息」可 force=1 跳过缓存
+_OPENCLAW_LATEST_CACHE: dict = {"ts": 0.0, "latest": None, "error": None}
+_OPENCLAW_VERSION_CHECK_INTERVAL_SEC = max(60, _env_int("OPENCLAW_ADMIN_OPENCLAW_VERSION_CHECK_SEC", 43200))
+# 本机 openclaw -V 短时缓存，避免每次 /api/state 都 spawn
+_OPENCLAW_CLI_VER_CACHE: dict = {"ts": 0.0, "version": None, "error": None}
+_OPENCLAW_CLI_VER_CACHE_TTL_SEC = max(15, _env_int("OPENCLAW_ADMIN_OPENCLAW_CLI_CACHE_SEC", 120))
 
 
 # POST JSON 体上限（防异常大包占内存）；与监听地址/鉴权等网络策略无关
@@ -631,6 +648,820 @@ def probe_gateway_active() -> bool:
         return any(m in out for m in _gateway_ss_markers())
     return True
 
+
+def fetch_gateway_logs(*, lines: int = 200) -> dict:
+    """
+    网关近期日志：优先 journalctl -u 网关单元；失败时可读 OPENCLAW_GATEWAY_LOG_FILE 尾部。
+    ClawPanel 式「日志 tail」在本机的等价实现。
+    """
+    n = max(50, min(2000, int(lines)))
+    unit = SERVICE_NAME
+    timeout = max(8, min(45, 6 + n // 40))
+    r = run_command(
+        ["journalctl", "-u", unit, "-n", str(n), "--no-pager", "-o", "short-iso"],
+        timeout=timeout,
+    )
+    if r.get("ok"):
+        text = (r.get("stdout") or "").strip()
+        ls = text.splitlines() if text else []
+        return {
+            "ok": True,
+            "source": "journalctl",
+            "service": unit,
+            "lineCount": len(ls),
+            "lines": ls,
+            "text": text,
+        }
+    log_file = os.environ.get("OPENCLAW_GATEWAY_LOG_FILE", "").strip()
+    if log_file:
+        p = Path(log_file)
+        if p.is_file():
+            try:
+                raw = p.read_text(encoding="utf-8", errors="replace")
+                ls = raw.splitlines()
+                tail = ls[-n:] if len(ls) > n else ls
+                text = "\n".join(tail)
+                return {
+                    "ok": True,
+                    "source": "file",
+                    "path": str(p),
+                    "service": unit,
+                    "lineCount": len(tail),
+                    "lines": tail,
+                    "text": text,
+                }
+            except OSError as e:
+                return {
+                    "ok": False,
+                    "service": unit,
+                    "error": f"读取日志文件失败: {e}",
+                    "lines": [],
+                    "text": "",
+                }
+    err = (r.get("stderr") or r.get("stdout") or "journalctl 不可用或无权限").strip()
+    return {"ok": False, "service": unit, "error": err, "lines": [], "text": ""}
+
+
+def _usage_parse_int_field(v) -> int | None:
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        return int(v)
+    if isinstance(v, str) and v.strip().lstrip("-").isdigit():
+        try:
+            return int(v.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _usage_session_effective_ref(raw: dict, primary: str) -> str:
+    po = raw.get("providerOverride") if isinstance(raw.get("providerOverride"), str) else ""
+    mo = raw.get("modelOverride") if isinstance(raw.get("modelOverride"), str) else ""
+    ps, ms = po.strip(), mo.strip()
+    if ps and ms:
+        return f"{ps}/{ms}"
+    if ms and "/" in ms:
+        return ms.strip()
+    if ms:
+        return ms.strip()
+    p = (primary or "").strip()
+    return p if p else "—"
+
+
+def _usage_utc_date_range(days: int) -> tuple[str, str]:
+    """与 ClawPanel usage 页一致：endDate=今天 UTC，startDate=向前 (days-1) 天。"""
+    d = max(1, min(366, int(days)))
+    end = datetime.now(timezone.utc).date()
+    start = end - timedelta(days=d - 1)
+    return start.isoformat(), end.isoformat()
+
+
+def _iter_balanced_json_slices(text: str):
+    """从文本中依次切出顶层 {...} 片段（不跨字符串转义，仅适用于 CLI 输出场景）。"""
+    n = len(text)
+    i = 0
+    while i < n:
+        start = text.find("{", i)
+        if start < 0:
+            return
+        depth = 0
+        for j in range(start, n):
+            c = text[j]
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    yield text[start : j + 1]
+                    i = j + 1
+                    break
+        else:
+            return
+
+
+def _is_sessions_usage_payload(d: dict) -> bool:
+    """识别 Gateway sessions.usage 成功体，避免把日志里其它 JSON 或错误片段当成用量。"""
+    if d.get("ok") is False:
+        return False
+    if not isinstance(d.get("totals"), dict):
+        return False
+    if not isinstance(d.get("sessions"), list):
+        return False
+    return True
+
+
+def _coerce_sessions_usage_dict(d: dict) -> dict | None:
+    """兼容极少数包装形态（如 { result: { totals, sessions } }）。"""
+    if _is_sessions_usage_payload(d):
+        return d
+    for key in ("result", "data", "payload"):
+        inner = d.get(key)
+        if isinstance(inner, dict) and _is_sessions_usage_payload(inner):
+            return inner
+    return None
+
+
+def _parse_sessions_usage_from_cli_streams(*, stdout: str, stderr: str) -> dict | None:
+    """
+    从 openclaw gateway call 输出中解析 sessions.usage 结果。
+    优先 stdout；遍历所有平衡括号 JSON 块，取**最后一个**符合 sessions.usage 形态的 dict，
+    避免 stderr 插件日志里含「首个 {」导致误解析、与其它 JSON 窜台。
+    """
+    candidates: list[dict] = []
+    for chunk in (stdout or "", stderr or ""):
+        for slice_ in _iter_balanced_json_slices(chunk):
+            try:
+                obj = json.loads(slice_)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                candidates.append(obj)
+    for obj in reversed(candidates):
+        coerced = _coerce_sessions_usage_dict(obj)
+        if coerced is not None:
+            return coerced
+    return None
+
+
+def _gateway_call_sessions_usage_json(*, start_date: str, end_date: str, limit: int) -> tuple[dict | None, str | None]:
+    """
+    调用本机 Gateway 的 sessions.usage（与 ClawPanel WebSocket 请求同源）。
+    需网关在线；可选 OPENCLAW_GATEWAY_TOKEN / OPENCLAW_GATEWAY_PASSWORD / OPENCLAW_GATEWAY_URL。
+    """
+    params = json.dumps({"startDate": start_date, "endDate": end_date, "limit": limit}, separators=(",", ":"))
+    timeout_sec = max(25, min(120, int(os.environ.get("OPENCLAW_ADMIN_USAGE_GATEWAY_TIMEOUT", "90"))))
+    args: list[str] = [
+        "openclaw",
+        "gateway",
+        "call",
+        "sessions.usage",
+        "--json",
+        "--params",
+        params,
+        "--timeout",
+        str(timeout_sec * 1000),
+    ]
+    token = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "").strip()
+    pwd = os.environ.get("OPENCLAW_GATEWAY_PASSWORD", "").strip()
+    url = os.environ.get("OPENCLAW_GATEWAY_URL", "").strip()
+    if not token or not url:
+        try:
+            cfg = read_config()
+            gw = cfg.get("gateway") if isinstance(cfg.get("gateway"), dict) else {}
+            if not token:
+                auth = gw.get("auth") if isinstance(gw.get("auth"), dict) else {}
+                tok = auth.get("token")
+                if isinstance(tok, str) and tok.strip():
+                    token = tok.strip()
+            if not url:
+                remote = gw.get("remote") if isinstance(gw.get("remote"), dict) else {}
+                u = remote.get("url")
+                if isinstance(u, str) and u.strip():
+                    url = u.strip()
+        except Exception:
+            pass
+    if token:
+        args.extend(["--token", token])
+    if pwd:
+        args.extend(["--password", pwd])
+    if url:
+        args.extend(["--url", url])
+    r = run_command(args, timeout=timeout_sec + 15)
+    out = (r.get("stdout") or "").strip()
+    err = (r.get("stderr") or "").strip()
+    parsed = _parse_sessions_usage_from_cli_streams(stdout=out, stderr=err)
+    if parsed is not None:
+        return parsed, None
+    if not r.get("ok"):
+        msg = (err or out or "gateway call 失败").strip()
+        return None, msg[:2500]
+    return None, "未能从 openclaw gateway call 输出中解析有效的 sessions.usage JSON（已忽略非用量片段）"
+
+
+def _usage_gateway_call_disabled() -> bool:
+    v = os.environ.get("OPENCLAW_ADMIN_USAGE_GATEWAY", "").strip().lower()
+    return v in ("0", "false", "off", "skip", "no")
+
+
+def _gateway_call_sessions_usage_with_retries(
+    *, start_date: str, end_date: str, limit: int
+) -> tuple[dict | None, str | None]:
+    n = max(1, min(4, int(os.environ.get("OPENCLAW_ADMIN_USAGE_GATEWAY_RETRIES", "2"))))
+    last: str | None = None
+    for i in range(n):
+        su, serr = _gateway_call_sessions_usage_json(start_date=start_date, end_date=end_date, limit=limit)
+        if su is not None:
+            return su, None
+        last = serr
+        if i + 1 < n and serr:
+            low = serr.lower()
+            if "gateway connect" in low or "1006" in low or "gateway closed" in low or "timeout" in low:
+                time.sleep(min(1.2, 0.35 * (i + 1)))
+                continue
+        break
+    return None, last
+
+
+def _zero_usage_totals_dict() -> dict:
+    return {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "totalCost": 0.0,
+        "inputCost": 0.0,
+        "outputCost": 0.0,
+        "cacheReadCost": 0.0,
+        "cacheWriteCost": 0.0,
+        "missingCostEntries": 0,
+    }
+
+
+def _build_local_store_sessions_usage_payload(
+    *,
+    start_date: str,
+    end_date: str,
+    limit: int,
+    usage_session_rows: list[dict],
+    usage_model_rows: list[dict],
+    token_total_sum: int,
+) -> dict:
+    """
+    网关不可用时，用 sessions.json 已有字段拼出与前端 ClawPanel 结构兼容的用量对象，
+    避免整页「Gateway 报错」；费用/消息/按日等为 0 或未统计。
+    """
+    lim = max(1, min(200, int(limit)))
+    empty = _zero_usage_totals_dict()
+    totals = {**empty, "totalTokens": max(0, int(token_total_sum))}
+    sessions: list[dict] = []
+    for row in (usage_session_rows or [])[:lim]:
+        key = (row.get("sessionKey") or row.get("sessionKeyShort") or "") or "—"
+        mref = row.get("modelRef") if isinstance(row.get("modelRef"), str) else ""
+        mref = mref.strip() or "—"
+        prov, mname = "", mref
+        if "/" in mref:
+            a, b = mref.split("/", 1)
+            prov, mname = a.strip(), b.strip() or mref
+        tt = row.get("totalTokens")
+        tti = int(tt) if isinstance(tt, int) and tt >= 0 else 0
+        usage_inner = {
+            "totalTokens": tti,
+            "totalCost": 0.0,
+            "messageCounts": {"total": 0, "user": 0, "assistant": 0, "errors": 0},
+            "modelUsage": (
+                [{"provider": prov or None, "model": mname or None, "tokens": tti, "cost": 0, "count": 1}]
+                if mname and mname != "—"
+                else []
+            ),
+        }
+        sessions.append(
+            {
+                "key": key,
+                "sessionId": None,
+                "agentId": None,
+                "channel": None,
+                "model": mref,
+                "modelProvider": prov or None,
+                "usage": usage_inner,
+            }
+        )
+    by_model: list[dict] = []
+    for mr in (usage_model_rows or [])[:20]:
+        ref = (mr.get("modelRef") if isinstance(mr.get("modelRef"), str) else "") or "未知"
+        prov2, mod2 = "", ref
+        if "/" in ref:
+            x, y = ref.split("/", 1)
+            prov2, mod2 = x.strip(), (y.strip() or ref)
+        tok = int(mr.get("totalTokens") or 0)
+        cnt = int(mr.get("sessionCount") or 0)
+        by_model.append(
+            {
+                "model": mod2,
+                "provider": prov2 or None,
+                "count": cnt,
+                "totals": {**empty, "totalTokens": tok, "totalCost": 0.0},
+            }
+        )
+    aggregates = {
+        "messages": {"total": 0, "user": 0, "assistant": 0, "errors": 0},
+        "tools": {"totalCalls": 0, "uniqueTools": 0, "tools": []},
+        "byModel": by_model,
+        "byProvider": [],
+        "byAgent": [],
+        "byChannel": [],
+        "daily": [],
+    }
+    return {
+        "updatedAt": int(time.time() * 1000),
+        "startDate": start_date,
+        "endDate": end_date,
+        "sessions": sessions,
+        "totals": totals,
+        "aggregates": aggregates,
+    }
+
+
+def _empty_sessions_usage_payload(*, start_date: str, end_date: str) -> dict:
+    """与 ClawPanel 同结构的空用量（仅界面占位，无第二套 UI）。"""
+    z = _zero_usage_totals_dict()
+    return {
+        "updatedAt": int(time.time() * 1000),
+        "startDate": start_date,
+        "endDate": end_date,
+        "sessions": [],
+        "totals": dict(z),
+        "aggregates": {
+            "messages": {"total": 0, "user": 0, "assistant": 0, "errors": 0},
+            "tools": {"totalCalls": 0, "uniqueTools": 0, "tools": []},
+            "byModel": [],
+            "byProvider": [],
+            "byAgent": [],
+            "byChannel": [],
+            "daily": [],
+        },
+    }
+
+
+def _sessions_usage_is_effectively_empty(su: object) -> bool:
+    """
+    网关 sessions.usage 在选定日期内无 jsonl 活动时，常返回结构合法但 sessions=[]、Token 全 0。
+    此时若本地 sessions 仍有数据，应回退到 sessions.json 合成，避免界面「全空」。
+    """
+    if not isinstance(su, dict):
+        return True
+    sess = su.get("sessions")
+    n = len(sess) if isinstance(sess, list) else 0
+    if n > 0:
+        return False
+    tot = su.get("totals") if isinstance(su.get("totals"), dict) else {}
+    try:
+        tok = int(tot.get("totalTokens") or 0)
+    except (TypeError, ValueError):
+        tok = 0
+    return tok <= 0
+
+
+def build_usage_snapshot(*, usage_days: int = 7, usage_limit: int = 20) -> dict:
+    """
+    使用情况：始终返回 ClawPanel 同构的 sessionsUsage（网关优先；否则由 sessions.json 填充；再无则空壳）。
+    前端只渲染单一用量界面。
+    """
+    usage_days = max(1, min(366, int(usage_days)))
+    usage_limit = max(1, min(200, int(usage_limit)))
+    out: dict = {
+        "sessionsPath": str(SESSION_STORE_PATH),
+        "configPath": str(CONFIG_PATH),
+        "gatewayService": SERVICE_NAME,
+        "primaryRoute": "",
+        "sessionsCount": 0,
+        "providersCount": 0,
+        "modelsCount": 0,
+        "sessionsFileBytes": None,
+        "configFileBytes": None,
+        "openclawHomeFreeBytes": None,
+        "openclawHomeTotalBytes": None,
+        "latestSessionTouchMs": None,
+        "gatewayActiveSince": None,
+        "usageDays": usage_days,
+        "usageLimit": usage_limit,
+    }
+    primary = ""
+    try:
+        config = read_config()
+        primary = ((config.get("agents") or {}).get("defaults", {}).get("model", {}) or {}).get("primary") or ""
+        primary = primary.strip() if isinstance(primary, str) else ""
+        out["primaryRoute"] = primary
+        provs = (config.get("models") or {}).get("providers")
+        if isinstance(provs, dict):
+            out["providersCount"] = len(provs)
+            mc = 0
+            for _pk, block in provs.items():
+                if isinstance(block, dict) and isinstance(block.get("models"), list):
+                    mc += sum(1 for m in block["models"] if isinstance(m, dict))
+            out["modelsCount"] = mc
+    except Exception:
+        pass
+
+    session_rows: list[dict] = []
+    model_list: list[dict] = []
+    token_sum = 0
+    sess_n = 0
+    latest_ms: int | None = None
+    store = _read_session_store()
+    if isinstance(store, dict):
+        sess_n = len(store)
+        out["sessionsCount"] = sess_n
+        by_model: dict[str, dict] = {}
+        for sk, raw in store.items():
+            if not isinstance(raw, dict):
+                continue
+            for key in ("updatedAt", "updated_at", "lastActivityAt", "lastSeenAt"):
+                v = raw.get(key)
+                if isinstance(v, bool):
+                    continue
+                if isinstance(v, (int, float)):
+                    iv = int(v)
+                    if iv > 1_000_000_000_000:
+                        ts_ms = iv
+                    elif iv > 946684800:
+                        ts_ms = iv * 1000
+                    else:
+                        continue
+                    latest_ms = ts_ms if latest_ms is None else max(latest_ms, ts_ms)
+                elif isinstance(v, str) and v.strip().isdigit():
+                    iv = int(v.strip())
+                    if iv > 1_000_000_000_000:
+                        ts_ms = iv
+                    elif iv > 946684800:
+                        ts_ms = iv * 1000
+                    else:
+                        continue
+                    latest_ms = ts_ms if latest_ms is None else max(latest_ms, ts_ms)
+
+            tt = _usage_parse_int_field(raw.get("totalTokens"))
+            if tt is not None and tt >= 0:
+                token_sum += tt
+            ctx = _usage_parse_int_field(raw.get("contextTokens"))
+            mref = _usage_session_effective_ref(raw, primary)
+            sks = sk if isinstance(sk, str) else str(sk)
+            session_rows.append(
+                {
+                    "sessionKey": sks,
+                    "sessionKeyShort": (sks[:64] + "…") if len(sks) > 64 else sks,
+                    "sessionLabel": _session_key_label(sks),
+                    "modelRef": mref,
+                    "totalTokens": tt,
+                    "contextTokens": ctx,
+                }
+            )
+            agg = by_model.setdefault(mref, {"totalTokens": 0, "sessionCount": 0})
+            agg["sessionCount"] += 1
+            if tt is not None and tt >= 0:
+                agg["totalTokens"] += tt
+
+        out["latestSessionTouchMs"] = latest_ms
+        session_rows.sort(key=lambda r: (r.get("totalTokens") or 0), reverse=True)
+        session_rows = session_rows[:120]
+        model_list = [
+            {"modelRef": ref, "totalTokens": ag["totalTokens"], "sessionCount": ag["sessionCount"]}
+            for ref, ag in by_model.items()
+        ]
+        model_list.sort(key=lambda r: (r["totalTokens"], r["sessionCount"]), reverse=True)
+        model_list = model_list[:50]
+
+    if SESSION_STORE_PATH.exists():
+        try:
+            out["sessionsFileBytes"] = SESSION_STORE_PATH.stat().st_size
+        except OSError:
+            pass
+    if CONFIG_PATH.exists():
+        try:
+            out["configFileBytes"] = CONFIG_PATH.stat().st_size
+        except OSError:
+            pass
+    try:
+        home = CONFIG_PATH.expanduser().resolve().parent
+        du = shutil.disk_usage(home)
+        out["openclawHomeFreeBytes"] = du.free
+        out["openclawHomeTotalBytes"] = du.total
+    except Exception:
+        pass
+    st = run_command(
+        ["systemctl", "show", SERVICE_NAME, "-p", "ActiveEnterTimestamp", "--value"],
+        timeout=5,
+    )
+    if st.get("ok") and (st.get("stdout") or "").strip():
+        out["gatewayActiveSince"] = (st.get("stdout") or "").strip()
+    sd, ed = _usage_utc_date_range(usage_days)
+    if _usage_gateway_call_disabled():
+        su = None
+    else:
+        su, _serr = _gateway_call_sessions_usage_with_retries(
+            start_date=sd, end_date=ed, limit=usage_limit
+        )
+    local_ok = sess_n > 0 or bool(session_rows)
+    if su is not None and not _sessions_usage_is_effectively_empty(su):
+        out["sessionsUsage"] = su
+    elif local_ok:
+        out["sessionsUsage"] = _build_local_store_sessions_usage_payload(
+            start_date=sd,
+            end_date=ed,
+            limit=usage_limit,
+            usage_session_rows=session_rows,
+            usage_model_rows=model_list,
+            token_total_sum=token_sum,
+        )
+    elif su is not None:
+        out["sessionsUsage"] = su
+    else:
+        out["sessionsUsage"] = _empty_sessions_usage_payload(start_date=sd, end_date=ed)
+
+    out["usageDays"] = usage_days
+    out["usageLimit"] = usage_limit
+    return out
+
+
+# —— 用量快照：按 (days,limit) 多槽内存缓存（与 UI「今天/7天/30天」三档对应）+ 后台定时刷新 ——
+_ADMIN_USAGE_BG_INTERVAL_SEC = max(60, _env_int("OPENCLAW_ADMIN_USAGE_BG_INTERVAL_SEC", 300))
+_ADMIN_USAGE_CACHE_LOCK = threading.Lock()
+# (days, limit) -> {"usage": dict, "updatedAtMs": int}
+_ADMIN_USAGE_CACHES: dict[tuple[int, int], dict] = {}
+
+
+def _usage_norm_days_limit(days: int, limit: int) -> tuple[int, int]:
+    d = max(1, min(366, int(days)))
+    lim = max(1, min(200, int(limit)))
+    return (d, lim)
+
+
+def _usage_background_preset_keys() -> list[tuple[int, int]]:
+    """与管理端用量 Tab 一致：今天=1、7 天、30 天，limit=20。"""
+    lim = 20
+    return [(1, lim), (7, lim), (30, lim)]
+
+
+def refresh_usage_snapshot_cache_entry(days: int, limit: int) -> dict:
+    """完整构建并写入对应 (days,limit) 槽；返回 usage 字典。"""
+    usage = build_usage_snapshot(usage_days=days, usage_limit=limit)
+    key = _usage_norm_days_limit(days, limit)
+    at_ms = int(time.time() * 1000)
+    with _ADMIN_USAGE_CACHE_LOCK:
+        _ADMIN_USAGE_CACHES[key] = {"usage": usage, "updatedAtMs": at_ms}
+    return usage
+
+
+def _get_usage_cache_row(days: int, limit: int) -> dict | None:
+    key = _usage_norm_days_limit(days, limit)
+    with _ADMIN_USAGE_CACHE_LOCK:
+        row = _ADMIN_USAGE_CACHES.get(key)
+    if not row or not isinstance(row.get("usage"), dict):
+        return None
+    return row
+
+
+def usage_snapshot_http_payload(*, days: int, limit: int, force: bool) -> dict:
+    """供 GET /api/usage/snapshot 使用；返回含 usageCachedAt / usageFromCache。"""
+    if force:
+        usage = refresh_usage_snapshot_cache_entry(days, limit)
+        row = _get_usage_cache_row(days, limit) or {}
+        at_ms = int(row.get("updatedAtMs") or int(time.time() * 1000))
+        return {
+            "ok": True,
+            "usage": usage,
+            "usageCachedAt": at_ms,
+            "usageFromCache": False,
+        }
+    row = _get_usage_cache_row(days, limit)
+    if row is not None:
+        return {
+            "ok": True,
+            "usage": row["usage"],
+            "usageCachedAt": int(row.get("updatedAtMs") or 0),
+            "usageFromCache": True,
+        }
+    usage = refresh_usage_snapshot_cache_entry(days, limit)
+    row2 = _get_usage_cache_row(days, limit) or {}
+    at_ms = int(row2.get("updatedAtMs") or int(time.time() * 1000))
+    return {
+        "ok": True,
+        "usage": usage,
+        "usageCachedAt": at_ms,
+        "usageFromCache": False,
+    }
+
+
+def _usage_background_refresh_loop() -> None:
+    while True:
+        time.sleep(_ADMIN_USAGE_BG_INTERVAL_SEC)
+        for days, lim in _usage_background_preset_keys():
+            try:
+                refresh_usage_snapshot_cache_entry(days, lim)
+            except Exception:
+                pass
+
+
+def start_usage_background_refresher() -> None:
+    if os.environ.get("OPENCLAW_ADMIN_USAGE_BG_DISABLE", "").strip().lower() in ("1", "true", "yes", "on"):
+        return
+
+    def _bootstrap() -> None:
+        for days, lim in _usage_background_preset_keys():
+            try:
+                refresh_usage_snapshot_cache_entry(days, lim)
+            except Exception:
+                pass
+        _usage_background_refresh_loop()
+
+    t = threading.Thread(target=_bootstrap, name="openclaw-admin-usage-bg", daemon=True)
+    t.start()
+
+
+# —— 配置 + 会话自动/手动备份（默认每小时、保留 7 天）——
+BACKUP_ID_RE = re.compile(r"^\d{8}_\d{6}(_[0-9]+)?$")
+ADMIN_BACKUP_RETENTION_DAYS = max(1, _env_int("OPENCLAW_ADMIN_BACKUP_RETENTION_DAYS", 7))
+ADMIN_BACKUP_INTERVAL_SEC = max(60, _env_int("OPENCLAW_ADMIN_BACKUP_INTERVAL_SEC", 3600))
+
+
+def _admin_backup_dir() -> Path:
+    raw = os.environ.get("OPENCLAW_ADMIN_BACKUP_DIR", "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (CONFIG_PATH.parent / "openclaw-model-admin-backups").resolve()
+
+
+def prune_old_backups(backup_root: Path, *, keep_days: int) -> int:
+    """按目录 mtime 删除超过 keep_days 的备份子目录。"""
+    if not backup_root.is_dir():
+        return 0
+    cutoff = time.time() - keep_days * 86400
+    removed = 0
+    for child in list(backup_root.iterdir()):
+        if not child.is_dir():
+            continue
+        if not BACKUP_ID_RE.match(child.name):
+            continue
+        try:
+            if child.stat().st_mtime < cutoff:
+                shutil.rmtree(child, ignore_errors=True)
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+def create_admin_backup(*, reason: str = "manual") -> dict:
+    """
+    将 openclaw.json 与 sessions.json（若存在）复制到带时间戳的子目录，并清理过期备份。
+    """
+    backup_root = _admin_backup_dir()
+    backup_root.mkdir(parents=True, exist_ok=True)
+    base = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = backup_root / base
+    if dest.exists():
+        i = 2
+        while (backup_root / f"{base}_{i}").exists():
+            i += 1
+        dest = backup_root / f"{base}_{i}"
+    dest.mkdir(parents=False)
+    meta = {
+        "id": dest.name,
+        "reason": (reason or "manual")[:120],
+        "createdAt": datetime.now().isoformat(timespec="seconds"),
+        "configPath": str(CONFIG_PATH),
+        "sessionsPath": str(SESSION_STORE_PATH),
+    }
+    has_cfg = False
+    has_sess = False
+    with _config_lock_shared():
+        if CONFIG_PATH.is_file():
+            shutil.copy2(CONFIG_PATH, dest / "openclaw.json")
+            has_cfg = True
+        if SESSION_STORE_PATH.is_file():
+            shutil.copy2(SESSION_STORE_PATH, dest / "sessions.json")
+            has_sess = True
+    (dest / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    pruned = prune_old_backups(backup_root, keep_days=ADMIN_BACKUP_RETENTION_DAYS)
+    return {
+        "id": dest.name,
+        "path": str(dest),
+        "pruned": pruned,
+        "hasConfig": has_cfg,
+        "hasSessions": has_sess,
+        "backupDir": str(backup_root),
+        "retentionDays": ADMIN_BACKUP_RETENTION_DAYS,
+    }
+
+
+def list_admin_backups() -> dict:
+    backup_root = _admin_backup_dir()
+    rows: list[dict] = []
+    if backup_root.is_dir():
+        for child in sorted(backup_root.iterdir(), key=lambda p: p.name, reverse=True):
+            if not child.is_dir() or not BACKUP_ID_RE.match(child.name):
+                continue
+            cfg = child / "openclaw.json"
+            ses = child / "sessions.json"
+            meta_path = child / "meta.json"
+            reason = "—"
+            if meta_path.is_file():
+                try:
+                    mj = json.loads(meta_path.read_text(encoding="utf-8"))
+                    if isinstance(mj, dict) and isinstance(mj.get("reason"), str):
+                        reason = mj["reason"]
+                except Exception:
+                    pass
+            try:
+                mtime = child.stat().st_mtime
+                created = datetime.fromtimestamp(mtime).isoformat(timespec="seconds")
+            except OSError:
+                created = "—"
+            rows.append(
+                {
+                    "id": child.name,
+                    "hasConfig": cfg.is_file(),
+                    "hasSessions": ses.is_file(),
+                    "reason": reason,
+                    "createdAt": created,
+                }
+            )
+    return {
+        "backups": rows,
+        "backupDir": str(backup_root),
+        "retentionDays": ADMIN_BACKUP_RETENTION_DAYS,
+        "intervalSec": ADMIN_BACKUP_INTERVAL_SEC,
+    }
+
+
+def restore_admin_backup(backup_id: str) -> dict:
+    bid = (backup_id or "").strip()
+    if not BACKUP_ID_RE.match(bid):
+        raise ValueError("无效的备份 id")
+    src = _admin_backup_dir() / bid
+    if not src.is_dir():
+        raise ValueError("备份不存在")
+    cfg_src = src / "openclaw.json"
+    if not cfg_src.is_file():
+        raise ValueError("备份中缺少 openclaw.json")
+    cfg_text = cfg_src.read_text(encoding="utf-8")
+    json.loads(cfg_text)
+    cfg_out = cfg_text if cfg_text.endswith("\n") else cfg_text + "\n"
+    ses_src = src / "sessions.json"
+    ses_text: str | None = None
+    if ses_src.is_file():
+        ses_text = ses_src.read_text(encoding="utf-8")
+        json.loads(ses_text)
+        if not ses_text.endswith("\n"):
+            ses_text = ses_text + "\n"
+    pre = create_admin_backup(reason="pre-restore")
+    with _config_lock_exclusive():
+        previous_raw = CONFIG_PATH.read_text(encoding="utf-8") if CONFIG_PATH.is_file() else "{}\n"
+        try:
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_utf8(CONFIG_PATH, cfg_out)
+            validation = validate_config_file(use_cache=False)
+            if not validation["valid"]:
+                _atomic_write_utf8(CONFIG_PATH, previous_raw)
+                brief = "；".join(validation["issues"][:3]) if validation["issues"] else (validation.get("raw") or "")
+                raise ValueError(f"恢复后配置未通过校验，已回滚：{brief}")
+            _prime_cli_validate_cache(validation)
+        except ValueError:
+            raise
+        except Exception:
+            _atomic_write_utf8(CONFIG_PATH, previous_raw)
+            raise
+    if ses_text is not None:
+        SESSION_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_utf8(SESSION_STORE_PATH, ses_text)
+    ctx = sync_all_sessions_context_tokens_from_config(read_config())
+    cleared = clear_session_thinking_levels()
+    return {
+        "restoredFrom": bid,
+        "preRestoreBackupId": pre.get("id"),
+        "sessionContextSync": ctx,
+        "sessionThinkingCleared": cleared,
+    }
+
+
+def _backup_scheduler_loop() -> None:
+    while True:
+        time.sleep(ADMIN_BACKUP_INTERVAL_SEC)
+        try:
+            create_admin_backup(reason="scheduled")
+        except Exception:
+            pass
+
+
+def start_admin_backup_scheduler() -> None:
+    if os.environ.get("OPENCLAW_ADMIN_BACKUP_DISABLE", "").strip().lower() in ("1", "true", "yes", "on"):
+        return
+    t = threading.Thread(target=_backup_scheduler_loop, name="openclaw-admin-backup", daemon=True)
+    t.start()
+
+
 def _session_key_label(session_key: str) -> str:
     if session_key == MAIN_SESSION_KEY:
         return "主会话"
@@ -641,6 +1472,10 @@ def _session_key_label(session_key: str) -> str:
     if ":telegram:group:" in session_key:
         tail = session_key.split(":telegram:group:", 1)[-1]
         return f"Telegram 群 {tail}" if tail else "Telegram 群组"
+    if ":openclaw-weixin:direct:" in session_key:
+        return "微信私聊"
+    if ":openclaw-weixin:" in session_key:
+        return "微信会话"
     if ":cron:" in session_key:
         return "定时任务"
     return session_key
@@ -803,6 +1638,8 @@ def _session_preview_priority(session_key: str) -> int:
     """管理端「当前聊天」预览：优先电报私聊（与多数用户看 /status 的会话一致），避免误选 cron/群等 updatedAt 更高的键。"""
     if ":telegram:direct:" in session_key:
         return 40
+    if ":openclaw-weixin:direct:" in session_key:
+        return 39
     if ":telegram:slash:" in session_key:
         return 35
     if ":telegram:group:" in session_key or ":telegram:channel:" in session_key:
@@ -811,6 +1648,8 @@ def _session_preview_priority(session_key: str) -> int:
         return 25
     if ":telegram:" in session_key:
         return 20
+    if ":openclaw-weixin:" in session_key:
+        return 19
     return 10
 
 
@@ -858,6 +1697,18 @@ def _session_entry_to_preview(config: dict, primary: str, key: str, raw: dict) -
         tl = None
         status_think = cfg_th
         src = "config"
+    srl = raw.get("reasoningLevel")
+    session_reasoning = (
+        srl.strip()
+        if isinstance(srl, str) and srl.strip() in ("on", "off")
+        else None
+    )
+    selv = raw.get("elevatedLevel")
+    session_elevated = (
+        selv.strip()
+        if isinstance(selv, str) and selv.strip() in ("off", "full")
+        else None
+    )
     return {
         "sessionKey": key,
         "sessionLabel": _session_key_label(key),
@@ -867,35 +1718,9 @@ def _session_entry_to_preview(config: dict, primary: str, key: str, raw: dict) -
         "configThinking": cfg_th,
         "statusThink": status_think,
         "statusThinkSource": src,
+        "sessionReasoningLevel": session_reasoning,
+        "sessionElevatedLevel": session_elevated,
     }
-
-
-# 从电报会话抄到 agent:main:main 的「行为字段」（不含 thinkingLevel：思考只跟各模型在前端的 params.thinking）
-# 不碰 providerOverride、modelOverride 等，网页端模型选择保持独立
-_BEHAVIOR_KEYS_TELEGRAM_TO_WEB = (
-    "reasoningLevel",
-    "elevatedLevel",
-    "verboseLevel",
-    "fastMode",
-    "queueMode",
-    "queueDebounceMs",
-    "queueCap",
-    "queueDrop",
-    "execHost",
-    "execSecurity",
-    "execAsk",
-    "execNode",
-)
-
-_MODEL_IDENTITY_KEYS_PRESERVED_ON_WEB = frozenset(
-    {
-        "providerOverride",
-        "modelOverride",
-        "model",
-        "modelProvider",
-        "authProfileOverride",
-    }
-)
 
 
 def pick_telegram_direct_session_key(store: dict) -> str | None:
@@ -906,12 +1731,27 @@ def pick_telegram_direct_session_key(store: dict) -> str | None:
     return max(td, key=lambda k: int((store[k] or {}).get("updatedAt") or 0))
 
 
-def sync_web_session_from_telegram_direct(source_session_key: str | None = None) -> dict:
+def pick_weixin_direct_session_key(store: dict) -> str | None:
+    """openclaw-weixin 插件：私聊会话键形如 agent:*:openclaw-weixin:direct:*@im.wechat"""
+    wx = [k for k, v in store.items() if isinstance(v, dict) and ":openclaw-weixin:direct:" in k]
+    if not wx:
+        return None
+    return max(wx, key=lambda k: int((store[k] or {}).get("updatedAt") or 0))
+
+
+def set_session_model_override(
+    session_key: str,
+    *,
+    clear: bool = False,
+    model_ref: str | None = None,
+) -> dict:
     """
-    直接写 sessions.json：把电报私聊上的提权/推理展示/队列/exec 等与网页主会话对齐。
-    不包含 thinkingLevel：Think 由 openclaw.json 里各 ref 的 params.thinking 决定，由 clear_session_thinking_levels 统一清会话覆盖。
-    保留网页 modelOverride 等模型相关键。
+    写入 sessions.json：设置或清除单条会话的 modelOverride（与 OpenClaw 全路径 ref 一致），并去掉 providerOverride。
+    clear=True 时移除覆盖，会话回落到全局路由 primary。
     """
+    sk = (session_key or "").strip()
+    if not sk or sk in ("global", "unknown"):
+        return {"ok": False, "error": "无效的 sessionKey"}
     if not SESSION_STORE_PATH.exists():
         return {"ok": False, "error": "sessions.json 不存在", "path": str(SESSION_STORE_PATH)}
 
@@ -923,51 +1763,31 @@ def sync_web_session_from_telegram_direct(source_session_key: str | None = None)
     if not isinstance(store, dict):
         return {"ok": False, "error": "sessions 根节点应为对象"}
 
-    src_key = (source_session_key or "").strip() if isinstance(source_session_key, str) else ""
-    if src_key:
-        if ":telegram:direct:" not in src_key:
-            return {"ok": False, "error": "sourceSessionKey 须为 telegram 私聊键（包含 :telegram:direct:）"}
-        if src_key not in store or not isinstance(store.get(src_key), dict):
-            return {"ok": False, "error": f"源会话不存在: {src_key}"}
-    else:
-        src_key = pick_telegram_direct_session_key(store)
-        if not src_key:
-            return {"ok": False, "error": "未找到任何 agent:*:telegram:direct:* 会话，无法对齐"}
+    if sk not in store or not isinstance(store.get(sk), dict):
+        return {"ok": False, "error": "会话不存在，请先在对应渠道发起过对话"}
 
-    src = store[src_key]
-    if not isinstance(src, dict):
-        return {"ok": False, "error": "源会话数据无效"}
-
-    main = store.get(MAIN_SESSION_KEY)
-    if not isinstance(main, dict):
-        return {
-            "ok": False,
-            "error": f"{MAIN_SESSION_KEY} 不存在或无效，请先用 PocketClaw / 网页聊一次以建立主会话",
-        }
-
-    preserved_model_keys = [k for k in _MODEL_IDENTITY_KEYS_PRESERVED_ON_WEB if k in main]
-
-    changes: dict = {}
-    for field in _BEHAVIOR_KEYS_TELEGRAM_TO_WEB:
-        before = copy.deepcopy(main.get(field, "__missing__"))
-        if field in src:
-            main[field] = copy.deepcopy(src[field])
-            after = copy.deepcopy(main[field])
-        else:
-            if field in main:
-                del main[field]
-            after = "__missing__"
-        if before != after:
-            changes[field] = {"before": None if before == "__missing__" else before, "after": None if after == "__missing__" else after}
-
+    raw = store[sk]
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup_path = SESSION_STORE_PATH.parent / f"sessions.json.bak.sync-web-{stamp}"
+    backup_path = SESSION_STORE_PATH.parent / f"sessions.json.bak.modelov-{stamp}"
     try:
         shutil.copy2(SESSION_STORE_PATH, backup_path)
     except Exception as e:
         return {"ok": False, "error": f"备份 sessions.json 失败: {e}"}
 
     try:
+        if clear:
+            raw.pop("modelOverride", None)
+            raw.pop("providerOverride", None)
+            mode = "cleared"
+        else:
+            ref_in = model_ref.strip() if isinstance(model_ref, str) else ""
+            if not ref_in or "/" not in ref_in:
+                return {"ok": False, "error": "modelRef 须为非空的 provider/model"}
+            ref_n = normalize_model_ref_provider_lower(ref_in)
+            raw["modelOverride"] = ref_n
+            raw.pop("providerOverride", None)
+            mode = "set"
+        raw["updatedAt"] = int(time.time() * 1000)
         SESSION_STORE_PATH.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except Exception as e:
         try:
@@ -976,13 +1796,85 @@ def sync_web_session_from_telegram_direct(source_session_key: str | None = None)
             pass
         return {"ok": False, "error": f"写入 sessions.json 失败（已尝试从备份恢复）: {e}"}
 
+    ctx_sync = sync_all_sessions_context_tokens_from_config(read_config())
+
     return {
         "ok": True,
-        "sourceSessionKey": src_key,
-        "targetSessionKey": MAIN_SESSION_KEY,
+        "sessionKey": sk,
+        "mode": mode,
+        "modelOverride": None if clear else raw.get("modelOverride"),
         "backupPath": str(backup_path),
-        "preservedModelFields": preserved_model_keys,
-        "changes": changes,
+        "sessionContextSync": ctx_sync,
+    }
+
+
+def set_session_behavior(session_key: str, payload: dict) -> dict:
+    """
+    写入 sessions.json：单条会话的 reasoningLevel / elevatedLevel。
+    JSON null 表示删除该键（跟随全局 agents.defaults + admin 偏好）。
+    """
+    sk = (session_key or "").strip()
+    if not sk or sk in ("global", "unknown"):
+        return {"ok": False, "error": "无效的 sessionKey"}
+    if not SESSION_STORE_PATH.exists():
+        return {"ok": False, "error": "sessions.json 不存在", "path": str(SESSION_STORE_PATH)}
+
+    try:
+        store = json.loads(SESSION_STORE_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"ok": False, "error": f"读取 sessions.json 失败: {e}"}
+
+    if not isinstance(store, dict):
+        return {"ok": False, "error": "sessions 根节点应为对象"}
+
+    if sk not in store or not isinstance(store.get(sk), dict):
+        return {"ok": False, "error": "会话不存在，请先在对应渠道发起过对话"}
+
+    if "reasoningLevel" not in payload and "elevatedLevel" not in payload:
+        return {"ok": False, "error": "请至少提供 reasoningLevel 或 elevatedLevel（可用 null 表示跟随全局）"}
+
+    raw = store[sk]
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = SESSION_STORE_PATH.parent / f"sessions.json.bak.behavior-{stamp}"
+    try:
+        shutil.copy2(SESSION_STORE_PATH, backup_path)
+    except Exception as e:
+        return {"ok": False, "error": f"备份 sessions.json 失败: {e}"}
+
+    try:
+        if "reasoningLevel" in payload:
+            v = payload["reasoningLevel"]
+            if v is None:
+                raw.pop("reasoningLevel", None)
+            elif isinstance(v, str) and v in ("on", "off"):
+                raw["reasoningLevel"] = v
+            else:
+                return {"ok": False, "error": "reasoningLevel 须为 on、off 或 null"}
+        if "elevatedLevel" in payload:
+            v = payload["elevatedLevel"]
+            if v is None:
+                raw.pop("elevatedLevel", None)
+            elif isinstance(v, str) and v in ("off", "full"):
+                raw["elevatedLevel"] = v
+            else:
+                return {"ok": False, "error": "elevatedLevel 须为 off、full 或 null"}
+        raw["updatedAt"] = int(time.time() * 1000)
+        SESSION_STORE_PATH.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except Exception as e:
+        try:
+            shutil.copy2(backup_path, SESSION_STORE_PATH)
+        except Exception:
+            pass
+        return {"ok": False, "error": f"写入 sessions.json 失败（已尝试从备份恢复）: {e}"}
+
+    ctx_sync = sync_all_sessions_context_tokens_from_config(read_config())
+    return {
+        "ok": True,
+        "sessionKey": sk,
+        "reasoningLevel": raw.get("reasoningLevel"),
+        "elevatedLevel": raw.get("elevatedLevel"),
+        "backupPath": str(backup_path),
+        "sessionContextSync": ctx_sync,
     }
 
 
@@ -1034,7 +1926,7 @@ def _read_session_store():
 
 
 def build_session_previews(config, session_store=_MISSING_SESSION_SNAPSHOT) -> list:
-    """并排预览：电报私聊 + 网页主会话（agent:main:main），便于核对 Web 与 Telegram 是否同一 ref、同一 /status Think。"""
+    """并排预览：电报私聊、微信私聊（openclaw-weixin）、网页主会话（agent:main:main）。"""
     try:
         primary = (config.get("agents") or {}).get("defaults", {}).get("model", {}).get("primary") or ""
     except Exception:
@@ -1048,6 +1940,12 @@ def build_session_previews(config, session_store=_MISSING_SESSION_SNAPSHOT) -> l
     if bk:
         p = _session_entry_to_preview(config, primary, bk, store[bk])
         p["previewTitle"] = "电报私聊"
+        out.append(p)
+
+    wk = pick_weixin_direct_session_key(store)
+    if wk:
+        p = _session_entry_to_preview(config, primary, wk, store[wk])
+        p["previewTitle"] = "微信私聊"
         out.append(p)
 
     wm = store.get(MAIN_SESSION_KEY)
@@ -1083,6 +1981,8 @@ def resolve_active_chat_session(config, session_store=_MISSING_SESSION_SNAPSHOT)
         "configThinking": cfg_only,
         "statusThink": cfg_only,
         "statusThinkSource": "config",
+        "sessionReasoningLevel": None,
+        "sessionElevatedLevel": None,
     }
     store = _read_session_store() if session_store is _MISSING_SESSION_SNAPSHOT else session_store
     if store is None:
@@ -1099,6 +1999,8 @@ def resolve_active_chat_session(config, session_store=_MISSING_SESSION_SNAPSHOT)
             "configThinking": ct,
             "statusThink": ct,
             "statusThinkSource": "config",
+            "sessionReasoningLevel": None,
+            "sessionElevatedLevel": None,
         }
     if not store:
         return empty
@@ -1614,6 +2516,908 @@ def probe_provider(p_name, url):
         return False
 
 
+def _resolve_provider_api_key(provider: dict) -> str:
+    raw = provider.get("apiKey")
+    if not isinstance(raw, str):
+        return ""
+    s = raw.strip()
+    if not s:
+        return ""
+    if _looks_like_filesystem_path_str(s):
+        try:
+            home = _openclaw_home_dir()
+            raw_path = Path(s).expanduser()
+            path = raw_path.resolve() if raw_path.is_absolute() else (home / s.lstrip("/")).resolve()
+        except OSError:
+            return ""
+        if path.is_file():
+            try:
+                return path.read_text(encoding="utf-8").strip()
+            except OSError:
+                return ""
+        return ""
+    return s
+
+
+def _model_test_http_timeout() -> float:
+    """与 ClawPanel test_model 一致默认 30s；可用环境变量覆盖。"""
+    return max(10.0, float(os.environ.get("OPENCLAW_MODEL_ADMIN_TEST_TIMEOUT", "30")))
+
+
+def _normalize_base_url_for_model_test(raw: str) -> str:
+    """对齐 ClawPanel（Rust normalize_base_url / dev-api _normalizeBaseUrl）：去尾缀、Ollama 11434 补 /v1。"""
+    base = (raw or "").strip().rstrip("/")
+    for suf in (
+        "/api/chat",
+        "/api/generate",
+        "/api/tags",
+        "/api",
+        "/chat/completions",
+        "/completions",
+        "/responses",
+        "/messages",
+        "/models",
+    ):
+        if base.endswith(suf):
+            base = base[: -len(suf)]
+            break
+    base = base.rstrip("/")
+    if base.endswith(":11434"):
+        return f"{base}/v1"
+    return base
+
+
+def _normalize_model_api_type_for_test(raw: str) -> str:
+    """对齐 ClawPanel normalize_model_api_type：openai-responses 在探测时走 chat/completions。"""
+    t = (raw or "").strip().lower()
+    if t in ("anthropic", "anthropic-messages"):
+        return "anthropic-messages"
+    if t in ("google-gemini", "google-generative-ai"):
+        return "google-gemini"
+    if t in (
+        "openai",
+        "openai-completions",
+        "openai-responses",
+        "openai-codex-responses",
+        "",
+    ):
+        return "openai-completions"
+    return "openai-completions"
+
+
+def _prepare_test_base_url(base: str, api_cat: str) -> str:
+    b = _normalize_base_url_for_model_test(base)
+    if api_cat == "anthropic-messages":
+        if not b.rstrip("/").endswith("/v1"):
+            b = b.rstrip("/") + "/v1"
+    return b
+
+
+def _http_post_json(url: str, headers: dict[str, str], payload: dict, timeout: float) -> tuple[int, str]:
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request, urlopen
+
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    h = dict(headers)
+    req = Request(url, data=body, method="POST", headers=h)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            code = getattr(resp, "status", None) or resp.getcode()
+            text = resp.read().decode("utf-8", errors="replace")
+            return int(code), text
+    except HTTPError as e:
+        try:
+            text = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            text = ""
+        return int(e.code), text
+    except URLError as e:
+        raise RuntimeError(str(e.reason) if getattr(e, "reason", None) else str(e)) from e
+
+
+def _extract_api_error_message(text: str, status: int) -> str:
+    try:
+        v = json.loads(text)
+        if isinstance(v, dict):
+            err = v.get("error")
+            if isinstance(err, dict):
+                m = err.get("message")
+                if isinstance(m, str) and m.strip():
+                    return m.strip()
+            m2 = v.get("message")
+            if isinstance(m2, str) and m2.strip():
+                return m2.strip()
+    except Exception:
+        pass
+    return f"HTTP {status}"
+
+
+def _extract_reply_preview_clawpanel(text: str, api_cat: str) -> str:
+    try:
+        v = json.loads(text)
+    except Exception:
+        return "（模型已响应）"
+    if not isinstance(v, dict):
+        return "（模型已响应）"
+    if api_cat == "anthropic-messages":
+        content = v.get("content")
+        if isinstance(content, list):
+            parts = [
+                b.get("text")
+                for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            ]
+            joined = "".join(x for x in parts if isinstance(x, str))
+            if joined:
+                return (joined[:50] + "…") if len(joined) > 50 else joined
+    if api_cat == "google-gemini":
+        cands = v.get("candidates")
+        if isinstance(cands, list) and cands:
+            parts = (
+                (cands[0] or {}).get("content", {}).get("parts")
+                if isinstance(cands[0], dict)
+                else None
+            )
+            if isinstance(parts, list) and parts:
+                t = parts[0].get("text") if isinstance(parts[0], dict) else None
+                if isinstance(t, str) and t:
+                    return (t[:50] + "…") if len(t) > 50 else t
+    ch0 = v.get("choices", [{}])[0] if isinstance(v.get("choices"), list) else {}
+    if isinstance(ch0, dict):
+        msg = ch0.get("message")
+        if isinstance(msg, dict):
+            c = msg.get("content")
+            if isinstance(c, str) and c.strip():
+                return (c[:50] + "…") if len(c) > 50 else c
+            rc = msg.get("reasoning_content")
+            if isinstance(rc, str) and rc.strip():
+                s = "[reasoning] " + rc
+                return (s[:50] + "…") if len(s) > 50 else s
+    out = v.get("output")
+    if isinstance(out, dict):
+        tx = out.get("text")
+        if isinstance(tx, str) and tx.strip():
+            return (tx[:50] + "…") if len(tx) > 50 else tx
+    return "（模型已响应）"
+
+
+def clawpanel_style_model_test(
+    base_url: str, api_key: str, model_id: str, eff_api_raw: str, timeout: float
+) -> tuple[float, str, str]:
+    """
+    与 ClawPanel test_model 对齐：非流式短请求，测整段往返耗时。
+    返回 (elapsed_seconds, detail_string, outcome) ，outcome 为 ok | soft | hard。
+    """
+    from urllib.parse import quote
+
+    api_cat = _normalize_model_api_type_for_test(eff_api_raw)
+    base = _prepare_test_base_url(base_url, api_cat)
+    t0 = time.perf_counter()
+    if api_cat == "anthropic-messages":
+        url = f"{base.rstrip('/')}/messages"
+        payload = {
+            "model": model_id,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "max_tokens": 16,
+        }
+        hdrs = {"Content-Type": "application/json", "anthropic-version": "2023-06-01"}
+        if api_key:
+            hdrs["x-api-key"] = api_key
+        status, text = _http_post_json(url, hdrs, payload, timeout)
+    elif api_cat == "google-gemini":
+        mid_q = quote(model_id, safe="")
+        qkey = quote(api_key or "", safe="")
+        url = f"{base.rstrip('/')}/models/{mid_q}:generateContent?key={qkey}"
+        payload = {"contents": [{"role": "user", "parts": [{"text": "Hi"}]}]}
+        status, text = _http_post_json(
+            url, {"Content-Type": "application/json"}, payload, timeout
+        )
+    else:
+        url = f"{base.rstrip('/')}/chat/completions"
+        payload = {
+            "model": model_id,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "max_tokens": 16,
+            "stream": False,
+        }
+        hdrs = {"Content-Type": "application/json"}
+        if api_key:
+            hdrs["Authorization"] = f"Bearer {api_key}"
+        status, text = _http_post_json(url, hdrs, payload, timeout)
+
+    elapsed = time.perf_counter() - t0
+
+    if status in (401, 403):
+        return elapsed, _extract_api_error_message(text, status), "hard"
+    if 200 <= status < 300:
+        return elapsed, _extract_reply_preview_clawpanel(text, api_cat), "ok"
+    msg = _extract_api_error_message(text, status)
+    soft = (
+        f"⚠ 连接正常（API 返回 HTTP {status}，部分模型对简单测试不兼容，不影响实际使用）"
+        f" · {msg[:200]}"
+    )
+    return elapsed, soft, "soft"
+
+
+def measure_model_test(ref: str) -> dict:
+    """模型连通性测试：逻辑对齐 ClawPanel test_model，返回整段请求耗时（秒）。"""
+    if not isinstance(ref, str) or "/" not in ref.strip():
+        return {"ok": False, "error": "无效的模型 ref"}
+    ref_n = normalize_model_ref_provider_lower(ref.strip())
+    p_name, _, mid = ref_n.partition("/")
+    mid = mid.strip()
+    if not p_name or not mid:
+        return {"ok": False, "error": "无效的模型 ref"}
+    try:
+        config = read_config()
+    except Exception as e:
+        return {"ok": False, "error": f"读取配置失败: {e}"}
+    provs = config.get("models", {}).get("providers", {})
+    if not isinstance(provs, dict):
+        return {"ok": False, "error": "配置中无 models.providers"}
+    pk = resolve_provider_key_in_provs(provs, p_name)
+    if not pk:
+        return {"ok": False, "error": f"找不到供应商「{p_name}」"}
+    provider = provs.get(pk)
+    if not isinstance(provider, dict):
+        return {"ok": False, "error": "供应商块无效"}
+    if pk in BUILTIN_PROVIDERS or (provider.get("auth") or "").strip().lower() == "oauth":
+        return {"ok": False, "error": "内置或 OAuth 供应商无法在管理端直测，请使用带 API Key 的自定义线路"}
+    base_url = (provider.get("baseUrl") or "").strip()
+    if not base_url.startswith("http"):
+        return {"ok": False, "error": "无效的 baseUrl（需 http(s)）"}
+    api_key = _resolve_provider_api_key(provider)
+    if not api_key:
+        return {"ok": False, "error": "未配置 API Key（或密钥文件不可读）"}
+    model_entry = None
+    for m in provider.get("models", []) or []:
+        if isinstance(m, dict) and str(m.get("id", "")).strip() == mid:
+            model_entry = m
+            break
+    if not model_entry:
+        return {"ok": False, "error": f"找不到模型「{mid}」"}
+    p_api = provider.get("api") if isinstance(provider.get("api"), str) else ""
+    m_api = model_entry.get("api") if isinstance(model_entry.get("api"), str) else ""
+    eff = (
+        m_api.strip() if m_api.strip() else None
+    ) or (
+        p_api.strip() if isinstance(p_api, str) and p_api.strip() else None
+    ) or "openai-completions"
+    timeout = _model_test_http_timeout()
+    test_cat = _normalize_model_api_type_for_test(eff)
+    try:
+        elapsed, detail, outcome = clawpanel_style_model_test(
+            base_url, api_key, mid, eff, timeout
+        )
+    except Exception as e:
+        return {"ok": False, "error": str(e), "api": eff, "testCategory": test_cat}
+    sec = round(elapsed, 3)
+    if outcome == "hard":
+        return {"ok": False, "error": detail, "api": eff, "testCategory": test_cat}
+    out: dict = {
+        "ok": True,
+        "seconds": sec,
+        "api": eff,
+        "testCategory": test_cat,
+    }
+    if outcome == "soft":
+        out["softWarning"] = detail
+    else:
+        out["replyPreview"] = detail
+    return out
+
+
+def _http_get_raw(url: str, headers: dict[str, str], timeout: float) -> tuple[int, str]:
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request, urlopen
+
+    h = dict(headers)
+    req = Request(url, method="GET", headers=h)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            code = getattr(resp, "status", None) or resp.getcode()
+            text = resp.read().decode("utf-8", errors="replace")
+            return int(code), text
+    except HTTPError as e:
+        try:
+            text = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            text = ""
+        return int(e.code), text
+    except URLError as e:
+        raise RuntimeError(str(e.reason) if getattr(e, "reason", None) else str(e)) from e
+
+
+def _parse_remote_models_list_json(text: str) -> list[str]:
+    """解析 OpenAI 兼容 GET /v1/models 或 Ollama OpenAI 兼容列表 JSON。"""
+    ids: list[str] = []
+    try:
+        v = json.loads(text)
+    except Exception:
+        return ids
+    if not isinstance(v, dict):
+        return ids
+    data = v.get("data")
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                mid = item.get("id")
+                if isinstance(mid, str) and mid.strip():
+                    ids.append(mid.strip())
+    models = v.get("models")
+    if isinstance(models, list):
+        for item in models:
+            if isinstance(item, dict):
+                mid = item.get("id") or item.get("name")
+                if isinstance(mid, str) and mid.strip():
+                    ids.append(mid.strip())
+    # 去重保序
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in ids:
+        k = x.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(x)
+    return out
+
+
+def _infer_default_api_for_new_models(provider: dict) -> str:
+    p_api = provider.get("api") if isinstance(provider.get("api"), str) else ""
+    if isinstance(p_api, str) and p_api.strip() and p_api.strip() != "per-model":
+        return p_api.strip()
+    apis: list[str] = []
+    for m in provider.get("models", []) or []:
+        if not isinstance(m, dict):
+            continue
+        a = m.get("api")
+        if isinstance(a, str) and a.strip():
+            apis.append(a.strip())
+    if not apis:
+        return "openai-completions"
+    u = list(dict.fromkeys(apis))
+    return u[0] if len(u) == 1 else "openai-completions"
+
+
+def _fetch_remote_model_ids_for_provider(provider_raw: str) -> tuple[str, dict, list[str], set[str]]:
+    """
+    校验供应商并 GET OpenAI 兼容 /v1/models，返回 (pk, provider_dict, remote_ids, existing_id_set)。
+    不写入配置。
+    """
+    p_try = normalize_provider_id((provider_raw or "").strip())
+    if not p_try:
+        raise ValueError("缺少供应商名称")
+    if p_try in BUILTIN_PROVIDERS:
+        raise ValueError("内置供应商不支持远程拉取列表")
+    config = read_config()
+    provs = config.setdefault("models", {}).setdefault("providers", {})
+    if not isinstance(provs, dict):
+        provs = {}
+        config["models"]["providers"] = provs
+    pk = resolve_provider_key_in_provs(provs, p_try) or p_try
+    if pk not in provs:
+        raise ValueError("未找到该供应商")
+    provider = provs[pk]
+    if not isinstance(provider, dict):
+        raise ValueError("供应商块无效")
+    if (provider.get("auth") or "").strip().lower() == "oauth":
+        raise ValueError("OAuth 供应商不支持在管理端拉取模型列表")
+    base_url = (provider.get("baseUrl") or "").strip()
+    if not base_url.startswith("http"):
+        raise ValueError("无效的 baseUrl（需 http(s)）")
+    if isinstance(base_url, str) and base_url.strip().startswith("("):
+        raise ValueError("合成展示行不可拉取列表")
+    eff_api = _infer_default_api_for_new_models(provider)
+    api_cat = _normalize_model_api_type_for_test(eff_api)
+    if api_cat == "google-gemini":
+        raise ValueError("Gemini 协议暂不支持远程拉取，请手动添加模型")
+    api_key = _resolve_provider_api_key(provider)
+    if not api_key and api_cat == "anthropic-messages":
+        raise ValueError("未配置 API Key（或密钥文件不可读）")
+    base = _prepare_test_base_url(base_url, api_cat)
+    list_url = f"{base.rstrip('/')}/models"
+    timeout = max(15.0, min(120.0, _model_test_http_timeout() * 2))
+    hdrs: dict[str, str] = {}
+    if api_cat == "anthropic-messages":
+        hdrs["anthropic-version"] = "2023-06-01"
+        if api_key:
+            hdrs["x-api-key"] = api_key
+    else:
+        hdrs["Content-Type"] = "application/json"
+        if api_key:
+            hdrs["Authorization"] = f"Bearer {api_key}"
+    status, text = _http_get_raw(list_url, hdrs, timeout)
+    if status == 404 and api_cat == "anthropic-messages":
+        raise ValueError("远端未提供模型列表接口（HTTP 404），请手动添加模型")
+    if not (200 <= status < 300):
+        raise ValueError(_extract_api_error_message(text, status))
+    remote_ids = _parse_remote_models_list_json(text)
+    if not remote_ids:
+        raise ValueError("远端返回的模型列表为空或无法解析")
+    models_list = provider.get("models") or []
+    if not isinstance(models_list, list):
+        models_list = []
+    existing = {
+        str(m.get("id", "")).strip()
+        for m in models_list
+        if isinstance(m, dict) and isinstance(m.get("id"), str) and m.get("id", "").strip()
+    }
+    return pk, provider, remote_ids, existing
+
+
+def fetch_provider_remote_models_preview(provider_raw: str) -> dict:
+    """
+    拉取远端模型 id 列表（不修改配置）。返回弹窗内展示用的 remoteIds + 已在库中的 id（默认勾选）。
+    未出现在远端列表中的本地模型不在弹窗内，应用同步时不受影响。
+    """
+    pk, _provider, remote_ids, existing = _fetch_remote_model_ids_for_provider(provider_raw)
+    preview_cap = 1000
+    shown = remote_ids[:preview_cap]
+    in_config_remote = [mid for mid in shown if mid in existing]
+    remote_set_full = set(remote_ids)
+    local_only = sorted(mid for mid in existing if mid not in remote_set_full)
+    return {
+        "provider": pk,
+        "remoteCount": len(remote_ids),
+        "remoteIds": shown,
+        "remoteIdsTruncated": len(remote_ids) > preview_cap,
+        "inConfigRemoteIds": in_config_remote,
+        "localOnlyCount": len(local_only),
+        "localOnlySample": local_only[:8],
+        "message": (
+            f"远端 {len(remote_ids)} 个模型，下列展示 {len(shown)} 个。"
+            "已在配置中的默认勾选；取消勾选将从配置中移除。"
+            + (f"另有 {len(local_only)} 个本地模型不在远端列表中，不会被此弹窗改动。" if local_only else "")
+        ),
+    }
+
+
+def _purge_agents_defaults_model_ref(config: dict, p_name: str, m_id: str) -> None:
+    """从 agents.defaults.models 中移除 provider/model 条目（与 /api/model/delete 一致）。"""
+    mid = (m_id or "").strip()
+    if not mid:
+        return
+    ref = normalize_model_ref_provider_lower(f"{p_name}/{mid}")
+    am_del = config.get("agents", {}).get("defaults", {}).get("models", {})
+    if not isinstance(am_del, dict):
+        return
+    if ref in am_del:
+        del am_del[ref]
+        return
+    for k in list(am_del.keys()):
+        if isinstance(k, str) and normalize_model_ref_provider_lower(k) == ref:
+            del am_del[k]
+            break
+
+
+def _normalize_id_list_for_sync(raw: object, max_len: int, field: str) -> list[str]:
+    if not isinstance(raw, list):
+        raise ValueError(f"{field} 须为数组")
+    out: list[str] = []
+    seen: set[str] = set()
+    for x in raw:
+        if not isinstance(x, str):
+            continue
+        s = x.strip()
+        if not s:
+            continue
+        k = s.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(s)
+        if len(out) > max_len:
+            raise ValueError(f"{field} 过长（上限 {max_len}）")
+    return out
+
+
+def sync_provider_remote_model_selection(provider_raw: str, remote_ids_raw: object, selected_ids_raw: object) -> dict:
+    """
+    按弹窗勾选同步：remoteIds 为本次远端列表范围；selectedIds 为保留在配置中的 id。
+    - 在 remoteIds 内未勾选的：从供应商模型列表删除并清理 agents.defaults.models。
+    - 勾选的：保留；若尚不存在则追加。
+    - 不在 remoteIds 中的本地模型：原样保留（不受本次操作影响）。
+    """
+    max_n = 2000
+    remote_scope = _normalize_id_list_for_sync(remote_ids_raw, max_n, "remoteIds")
+    selected = _normalize_id_list_for_sync(selected_ids_raw, max_n, "selectedIds")
+    if not remote_scope:
+        raise ValueError("remoteIds 不能为空")
+    remote_set = set(remote_scope)
+    for s in selected:
+        if s not in remote_set:
+            raise ValueError("勾选项必须都属于本次提交的 remoteIds")
+
+    p_try = normalize_provider_id((provider_raw or "").strip())
+    if not p_try:
+        raise ValueError("缺少供应商名称")
+    if p_try in BUILTIN_PROVIDERS:
+        raise ValueError("内置供应商不可同步")
+    config = read_config()
+    provs = config.setdefault("models", {}).setdefault("providers", {})
+    if not isinstance(provs, dict):
+        provs = {}
+        config["models"]["providers"] = provs
+    pk = resolve_provider_key_in_provs(provs, p_try) or p_try
+    if pk not in provs:
+        raise ValueError("未找到该供应商")
+    provider = provs[pk]
+    if not isinstance(provider, dict):
+        raise ValueError("供应商块无效")
+
+    models_list = provider.get("models") or []
+    if not isinstance(models_list, list):
+        models_list = []
+    id_to_model: dict[str, dict] = {}
+    for m in models_list:
+        if isinstance(m, dict):
+            mid = str(m.get("id", "")).strip()
+            if mid:
+                id_to_model[mid] = m
+    old_ids = set(id_to_model.keys())
+    old_order = [
+        str(m.get("id", "")).strip()
+        for m in models_list
+        if isinstance(m, dict) and str(m.get("id", "")).strip()
+    ]
+
+    final_order: list[str] = []
+    seen_order: set[str] = set()
+    for m in models_list:
+        if not isinstance(m, dict):
+            continue
+        mid = str(m.get("id", "")).strip()
+        if not mid or mid in remote_set:
+            continue
+        if mid not in seen_order:
+            seen_order.add(mid)
+            final_order.append(mid)
+    for mid in selected:
+        if mid not in seen_order:
+            seen_order.add(mid)
+            final_order.append(mid)
+
+    to_add_ids = [mid for mid in final_order if mid not in old_ids]
+    max_append = 500
+    if len(to_add_ids) > max_append:
+        raise ValueError(f"单次最多新增 {max_append} 个模型，请减少勾选")
+
+    new_ids_set = set(final_order)
+    removed_ids = sorted(old_ids - new_ids_set)
+    if not removed_ids and not to_add_ids and old_order == final_order:
+        return {
+            "provider": pk,
+            "added": [],
+            "removed": [],
+            "addedCount": 0,
+            "removedCount": 0,
+            "message": "无变更",
+        }
+
+    for mid in removed_ids:
+        _purge_agents_defaults_model_ref(config, pk, mid)
+
+    eff_api = _infer_default_api_for_new_models(provider)
+    prev_reasoning = True
+    if models_list:
+        om = next((x for x in models_list if isinstance(x, dict)), None)
+        if isinstance(om, dict) and "reasoning" in om:
+            prev_reasoning = bool(om.get("reasoning"))
+    use_api = eff_api
+
+    new_models: list[dict] = []
+    added: list[str] = []
+    for mid in final_order:
+        if mid in id_to_model:
+            new_models.append(id_to_model[mid])
+        else:
+            new_m: dict = {
+                "id": mid,
+                "name": mid,
+                "reasoning": prev_reasoning,
+                "input": ["text"],
+                "contextWindow": 200000,
+                "maxTokens": 32768,
+            }
+            if isinstance(use_api, str) and use_api.strip() and use_api.strip() != "per-model":
+                new_m["api"] = use_api.strip()
+            new_models.append(new_m)
+            added.append(mid)
+
+    provider["models"] = new_models
+    if not new_models:
+        del provs[pk]
+
+    save_meta = save_config_with_validation(config)
+    ctx = sync_all_sessions_context_tokens_from_config(config)
+    cleared = clear_session_thinking_levels()
+    return {
+        "provider": pk,
+        "added": added,
+        "removed": removed_ids,
+        "addedCount": len(added),
+        "removedCount": len(removed_ids),
+        "migrations": save_meta.get("migrations", []),
+        "sessionContextSync": ctx,
+        "sessionThinkingCleared": cleared,
+    }
+
+
+def add_models_to_provider_by_ids(provider_raw: str, ids_raw: object) -> dict:
+    """
+    将指定模型 id 追加写入 models.providers.*.models（跳过已存在的 id）。
+    """
+    p_try = normalize_provider_id((provider_raw or "").strip())
+    if not p_try:
+        raise ValueError("缺少供应商名称")
+    if p_try in BUILTIN_PROVIDERS:
+        raise ValueError("内置供应商不可通过此接口批量添加")
+    if not isinstance(ids_raw, list):
+        raise ValueError("ids 须为非空数组")
+    want_ids: list[str] = []
+    seen_lower: set[str] = set()
+    for x in ids_raw:
+        if not isinstance(x, str):
+            continue
+        s = x.strip()
+        if not s:
+            continue
+        k = s.lower()
+        if k in seen_lower:
+            continue
+        seen_lower.add(k)
+        want_ids.append(s)
+    if not want_ids:
+        raise ValueError("请至少选择一个模型 id")
+    config = read_config()
+    provs = config.setdefault("models", {}).setdefault("providers", {})
+    if not isinstance(provs, dict):
+        provs = {}
+        config["models"]["providers"] = provs
+    pk = resolve_provider_key_in_provs(provs, p_try) or p_try
+    if pk not in provs:
+        raise ValueError("未找到该供应商")
+    provider = provs[pk]
+    if not isinstance(provider, dict):
+        raise ValueError("供应商块无效")
+    models_list = provider.setdefault("models", [])
+    if not isinstance(models_list, list):
+        models_list = []
+        provider["models"] = models_list
+    existing = {
+        str(m.get("id", "")).strip()
+        for m in models_list
+        if isinstance(m, dict) and isinstance(m.get("id"), str) and m.get("id", "").strip()
+    }
+    eff_api = _infer_default_api_for_new_models(provider)
+    prev_reasoning = True
+    if models_list:
+        om = next((x for x in models_list if isinstance(x, dict)), None)
+        if isinstance(om, dict) and "reasoning" in om:
+            prev_reasoning = bool(om.get("reasoning"))
+    use_api = eff_api
+    added: list[str] = []
+    max_new = 500
+    for mid in want_ids:
+        if len(added) >= max_new:
+            break
+        if mid in existing:
+            continue
+        new_m: dict = {
+            "id": mid,
+            "name": mid,
+            "reasoning": prev_reasoning,
+            "input": ["text"],
+            "contextWindow": 200000,
+            "maxTokens": 32768,
+        }
+        if isinstance(use_api, str) and use_api.strip() and use_api.strip() != "per-model":
+            new_m["api"] = use_api.strip()
+        models_list.append(new_m)
+        existing.add(mid)
+        added.append(mid)
+    if not added:
+        return {
+            "provider": pk,
+            "added": [],
+            "addedCount": 0,
+            "message": "所选模型均已存在于配置中",
+        }
+    save_meta = save_config_with_validation(config)
+    ctx = sync_all_sessions_context_tokens_from_config(config)
+    return {
+        "provider": pk,
+        "added": added,
+        "addedCount": len(added),
+        "migrations": save_meta.get("migrations", []),
+        "sessionContextSync": ctx,
+    }
+
+
+def _parse_openclaw_v_output(text: str) -> str | None:
+    m = re.search(r"OpenClaw\s+([\w][\w.-]*)", text or "")
+    return m.group(1) if m else None
+
+
+def _get_openclaw_cli_version_raw() -> tuple[str | None, str | None]:
+    try:
+        cp = subprocess.run(
+            ["openclaw", "-V"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        out = (cp.stdout or "") + (cp.stderr or "")
+        ver = _parse_openclaw_v_output(out)
+        if ver:
+            return ver, None
+        if cp.returncode != 0:
+            return None, (out.strip() or "openclaw -V 非零退出")[:500]
+        return None, "无法解析 openclaw -V 输出"
+    except FileNotFoundError:
+        return None, "未找到 openclaw 命令（PATH）"
+    except subprocess.TimeoutExpired:
+        return None, "openclaw -V 超时"
+    except Exception as e:
+        return None, str(e)
+
+
+def _get_openclaw_cli_version_cached() -> tuple[str | None, str | None]:
+    global _OPENCLAW_CLI_VER_CACHE
+    now = time.time()
+    ts = float(_OPENCLAW_CLI_VER_CACHE.get("ts") or 0)
+    v = _OPENCLAW_CLI_VER_CACHE.get("version")
+    e = _OPENCLAW_CLI_VER_CACHE.get("error")
+    if (now - ts) < float(_OPENCLAW_CLI_VER_CACHE_TTL_SEC) and (v is not None or e is not None):
+        return v if isinstance(v, str) else None, e if isinstance(e, str) else None
+    v2, e2 = _get_openclaw_cli_version_raw()
+    _OPENCLAW_CLI_VER_CACHE = {"ts": now, "version": v2, "error": e2}
+    return v2, e2
+
+
+def _npm_view_openclaw_version() -> tuple[str | None, str | None]:
+    try:
+        cp = subprocess.run(
+            ["npm", "view", "openclaw", "version"],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        raw = (cp.stdout or "").strip()
+        if cp.returncode != 0:
+            err = ((cp.stderr or "").strip() or raw or "npm view 失败")[:800]
+            return None, err
+        if not raw:
+            return None, "npm 无输出"
+        line = raw.splitlines()[0].strip()
+        return line, None
+    except FileNotFoundError:
+        return None, "未找到 npm 命令"
+    except subprocess.TimeoutExpired:
+        return None, "npm view 超时"
+    except Exception as e:
+        return None, str(e)
+
+
+def _oc_version_tuple(v: str) -> tuple[int, ...]:
+    t: list[int] = []
+    for part in (v or "").strip().split("."):
+        if part.isdigit():
+            t.append(int(part))
+        else:
+            break
+    return tuple(t)
+
+
+def _openclaw_versions_compare(current: str | None, latest: str | None) -> str:
+    """返回 'older' | 'same' | 'newer' | 'unknown'。"""
+    if not current or not latest:
+        return "unknown"
+    tc, tl = _oc_version_tuple(current), _oc_version_tuple(latest)
+    if not tc or not tl:
+        return "unknown"
+    if tl > tc:
+        return "older"
+    if tc > tl:
+        return "newer"
+    return "same"
+
+
+def openclaw_version_check_payload(*, force_refresh_latest: bool) -> dict:
+    global _OPENCLAW_LATEST_CACHE
+    now = time.time()
+    current, cur_err = _get_openclaw_cli_version_cached()
+    ts = float(_OPENCLAW_LATEST_CACHE.get("ts") or 0)
+    stale = (now - ts) >= float(_OPENCLAW_VERSION_CHECK_INTERVAL_SEC)
+    need_fetch = force_refresh_latest or ts <= 0.0 or stale
+
+    if need_fetch:
+        lat, lat_err = _npm_view_openclaw_version()
+        _OPENCLAW_LATEST_CACHE = {"ts": now, "latest": lat, "error": lat_err}
+    else:
+        lat = _OPENCLAW_LATEST_CACHE.get("latest")
+        lat_err = _OPENCLAW_LATEST_CACHE.get("error")
+
+    cache_ts = float(_OPENCLAW_LATEST_CACHE.get("ts") or now)
+    checked_iso = datetime.fromtimestamp(cache_ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    rel = _openclaw_versions_compare(current, lat if isinstance(lat, str) else None)
+    update_available = rel == "older"
+    is_latest: bool | None
+    if lat_err and not lat:
+        is_latest = None
+    elif rel == "older":
+        is_latest = False
+    elif rel in ("same", "newer"):
+        is_latest = True
+    else:
+        is_latest = None
+
+    return {
+        "ok": True,
+        "currentVersion": current,
+        "currentError": cur_err,
+        "latestVersion": lat,
+        "latestError": lat_err if isinstance(lat_err, str) else None,
+        "checkedAt": checked_iso,
+        "fromCache": not need_fetch,
+        "compare": rel,
+        "updateAvailable": update_available,
+        "isLatest": is_latest,
+    }
+
+
+def _parse_openclaw_update_stdout(stdout: str) -> dict | None:
+    raw = (stdout or "").strip()
+    if not raw:
+        return None
+    i = raw.find("{")
+    if i < 0:
+        return None
+    try:
+        return json.loads(raw[i:])
+    except json.JSONDecodeError:
+        return None
+
+
+def run_openclaw_builtin_update(*, no_restart: bool) -> dict:
+    global _OPENCLAW_LATEST_CACHE, _OPENCLAW_CLI_VER_CACHE
+    if _env_truthy("OPENCLAW_ADMIN_OPENCLAW_UPDATE_DISABLE"):
+        return {"ok": False, "error": "已禁用网页端一键更新（OPENCLAW_ADMIN_OPENCLAW_UPDATE_DISABLE）"}
+    timeout_sec = max(60, _env_int("OPENCLAW_ADMIN_OPENCLAW_UPDATE_TIMEOUT_SEC", 1800))
+    cmd = ["openclaw", "update", "--yes", "--json"]
+    if no_restart:
+        cmd.append("--no-restart")
+    try:
+        cp = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+            env=os.environ.copy(),
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"openclaw update 超过 {timeout_sec}s 仍未结束"}
+    except FileNotFoundError:
+        return {"ok": False, "error": "未找到 openclaw 命令"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+    parsed = _parse_openclaw_update_stdout(cp.stdout or "")
+    if cp.returncode == 0 and isinstance(parsed, dict):
+        _OPENCLAW_LATEST_CACHE = {"ts": 0.0, "latest": None, "error": None}
+        _OPENCLAW_CLI_VER_CACHE = {"ts": 0.0, "version": None, "error": None}
+        return {"ok": True, "result": parsed, "stderr": (cp.stderr or "").strip()[:2000] or None}
+    err_tail = ((cp.stderr or "").strip() or (cp.stdout or "").strip())[:2000]
+    return {
+        "ok": False,
+        "error": err_tail or f"退出码 {cp.returncode}",
+        "result": parsed,
+        "exitCode": cp.returncode,
+    }
+
+
 def build_state():
     try:
         config = read_config()
@@ -1628,9 +3432,36 @@ def build_state():
     model_items = []
     seen_refs = set()
 
-    # 标准供应商
+    # 标准供应商（api 展示：优先磁盘 provider.api；否则若所有子模型 api 一致则显示该值；多协议并存则 per-model）
     for p_name, p in providers.items():
-        provider_items.append({"name": p_name, "baseUrl": p.get("baseUrl", ""), "auth": p.get("auth", "api-key"), "api": p.get("api", ""), "modelCount": len(p.get("models", []))})
+        p_api_raw = p.get("api") if isinstance(p.get("api"), str) else ""
+        p_api_raw = p_api_raw.strip()
+        models_list = p.get("models", []) or []
+        per_model_apis: list[str] = []
+        for m in models_list:
+            if not isinstance(m, dict):
+                continue
+            ma = m.get("api")
+            if isinstance(ma, str) and ma.strip():
+                per_model_apis.append(ma.strip())
+        distinct = list(dict.fromkeys(per_model_apis))
+        if p_api_raw:
+            prov_api_disp = p_api_raw
+        elif len(distinct) == 1:
+            prov_api_disp = distinct[0]
+        elif len(distinct) > 1:
+            prov_api_disp = "per-model"
+        else:
+            prov_api_disp = ""
+        provider_items.append(
+            {
+                "name": p_name,
+                "baseUrl": p.get("baseUrl", ""),
+                "auth": p.get("auth", "api-key"),
+                "api": prov_api_disp,
+                "modelCount": len(models_list),
+            }
+        )
         for m in p.get("models", []):
             ref = f"{p_name}/{m['id']}"
             seen_refs.add(ref)
@@ -1725,7 +3556,13 @@ def build_state():
         alerts.append({"level": "error", "msg": f"配置校验失败（{len(config_issues)} 项）"})
     
     prefs = read_admin_prefs()
+    oc_cli_ver, _oc_cli_err = _get_openclaw_cli_version_cached()
     return {
+        "panelMeta": {
+            "version": PANEL_META_VERSION,
+            "sessionsPath": str(SESSION_STORE_PATH),
+            "openclawCliVersion": oc_cli_ver,
+        },
         "configPath": str(CONFIG_PATH),
         "primary": agents.get("model", {}).get("primary", ""),
         "mainSessionRoute": main_route,
@@ -1743,11 +3580,271 @@ def build_state():
         "alerts": alerts
     }
 
+
+def build_probe_report(state: dict) -> dict:
+    """
+    一键诊断：多检查项（ClawPanel 式结构化 health — 逐项 label/ok/detail，便于扩展与展示）。
+    """
+    checks: list[dict] = []
+    ts = datetime.now().strftime("%H:%M:%S")
+
+    alerts = state.get("alerts") if isinstance(state.get("alerts"), list) else []
+    read_failed = any(
+        isinstance(a, dict) and "配置读取失败" in str(a.get("msg") or "") for a in alerts
+    )
+    checks.append(
+        {
+            "id": "config_load",
+            "label": "配置文件",
+            "ok": not read_failed,
+            "detail": str(CONFIG_PATH) if not read_failed else "openclaw.json 不可读",
+        }
+    )
+
+    if not read_failed:
+        live_val = validate_config_file(use_cache=False)
+        cv_live = bool(live_val.get("valid"))
+        issues_live = live_val.get("issues") if isinstance(live_val.get("issues"), list) else []
+        issue_preview = "；".join(str(x) for x in issues_live[:2]) if issues_live else ""
+        checks.append(
+            {
+                "id": "config_validate",
+                "label": "结构 / CLI 校验",
+                "ok": cv_live,
+                "detail": "通过" if cv_live else (issue_preview or f"{len(issues_live)} 项问题"),
+                "issues": issues_live[:12],
+            }
+        )
+    else:
+        checks.append(
+            {
+                "id": "config_validate",
+                "label": "结构 / CLI 校验",
+                "ok": False,
+                "detail": "跳过（配置未加载）",
+                "issues": [],
+            }
+        )
+
+    gw = bool(state.get("gatewayActive"))
+    checks.append(
+        {
+            "id": "gateway",
+            "label": "网关连通",
+            "ok": gw,
+            "detail": "判定在线" if gw else "离线或不可达",
+        }
+    )
+
+    st = run_command(["systemctl", "is-active", SERVICE_NAME], timeout=5)
+    if st.get("ok") and (st.get("stdout") or "").strip():
+        act = (st.get("stdout") or "").strip()
+        checks.append(
+            {
+                "id": "systemd",
+                "label": "systemd 单元",
+                "ok": act == "active",
+                "detail": f"{SERVICE_NAME}: {act}",
+            }
+        )
+
+    if not gw:
+        pr = run_command(["ss", "-ltn"], timeout=5)
+        out = pr.get("stdout") or ""
+        listen = ":18789" in out or "18789" in out
+        checks.append(
+            {
+                "id": "port_18789",
+                "label": "端口 18789",
+                "ok": listen,
+                "detail": "ss 可见监听" if listen else "未见监听（网关离线时对照）",
+            }
+        )
+
+    hu = _gateway_health_url()
+    if hu:
+        hops = _probe_http_url(hu)
+        detail = hu if len(hu) < 96 else hu[:93] + "…"
+        checks.append(
+            {
+                "id": "gateway_health_url",
+                "label": "健康检查 URL",
+                "ok": hops,
+                "detail": detail,
+            }
+        )
+
+    if SESSION_STORE_PATH.exists():
+        try:
+            json.loads(SESSION_STORE_PATH.read_text(encoding="utf-8"))
+            checks.append(
+                {
+                    "id": "sessions_json",
+                    "label": "会话库",
+                    "ok": True,
+                    "detail": "sessions.json 可解析",
+                }
+            )
+        except Exception as e:
+            checks.append(
+                {
+                    "id": "sessions_json",
+                    "label": "会话库",
+                    "ok": False,
+                    "detail": str(e)[:120],
+                }
+            )
+    else:
+        checks.append(
+            {
+                "id": "sessions_json",
+                "label": "会话库",
+                "ok": True,
+                "optional": True,
+                "detail": "尚无 sessions.json（新装或未产生会话）",
+            }
+        )
+
+    prim = (state.get("primary") or "").strip() if isinstance(state.get("primary"), str) else ""
+    prim_ok = bool(prim and "/" in prim)
+    checks.append(
+        {
+            "id": "primary_route",
+            "label": "主模型路由",
+            "ok": prim_ok,
+            "detail": prim if prim else "未设置 primary",
+        }
+    )
+
+    fb = state.get("fallbacks") if isinstance(state.get("fallbacks"), list) else []
+    filled_fb = [x for x in fb if isinstance(x, str) and x.strip()]
+    fb_ok = all("/" in x.strip() for x in filled_fb)
+    checks.append(
+        {
+            "id": "fallbacks_route",
+            "label": "备用路由",
+            "ok": len(filled_fb) == 0 or fb_ok,
+            "detail": f"{len(filled_fb)} 条" if filled_fb else "无（可选）",
+        }
+    )
+
+    mr = state.get("mainSessionRoute") if isinstance(state.get("mainSessionRoute"), dict) else {}
+    matches = bool(mr.get("matchesPrimary", True))
+    # 会话内单独选模型是支持的能力，不应在诊断里标红「不一致」误导用户
+    if matches:
+        ms_detail = "与全局 primary 一致"
+    else:
+        ms_detail = (
+            "本会话已单独指定模型（modelOverride 等），与全局 primary 不同 — 属正常用法，不是故障"
+        )
+    checks.append(
+        {
+            "id": "main_session_model",
+            "label": "网页主会话模型",
+            "ok": True,
+            "detail": ms_detail,
+        }
+    )
+
+    r_cli = run_command(["openclaw", "--version"], timeout=10)
+    if r_cli.get("ok"):
+        vlines = (r_cli.get("stdout") or "").strip().splitlines()
+        line0 = vlines[0].strip()[:100] if vlines else "ok"
+        checks.append({"id": "openclaw_cli", "label": "OpenClaw CLI", "ok": True, "detail": line0})
+    else:
+        checks.append(
+            {
+                "id": "openclaw_cli",
+                "label": "OpenClaw CLI",
+                "ok": True,
+                "optional": True,
+                "detail": "未检测到命令（校验依赖 CLI 时安装 openclaw）",
+            }
+        )
+
+    mem_health_path = _openclaw_home_dir() / "memory" / "health" / "last-health.json"
+    if mem_health_path.is_file():
+        try:
+            mh = json.loads(mem_health_path.read_text(encoding="utf-8"))
+            m_ok = bool(mh.get("ok", True))
+            status = str(mh.get("health_status") or ("ok" if m_ok else "error"))[:40]
+            checks.append(
+                {
+                    "id": "memory_health_report",
+                    "label": "长期记忆（定时报告）",
+                    "ok": m_ok,
+                    "detail": status,
+                }
+            )
+        except Exception as e:
+            checks.append(
+                {
+                    "id": "memory_health_report",
+                    "label": "长期记忆（定时报告）",
+                    "ok": False,
+                    "detail": str(e)[:80],
+                }
+            )
+    else:
+        checks.append(
+            {
+                "id": "memory_health_report",
+                "label": "长期记忆（定时报告）",
+                "ok": True,
+                "optional": True,
+                "detail": "无报告文件（可选）",
+            }
+        )
+
+    providers = state.get("providers") if isinstance(state.get("providers"), list) else []
+    provider_results: dict[str, bool] = {}
+    for p in providers:
+        name = p.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        url = p.get("baseUrl", "")
+        url_s = url if isinstance(url, str) else ""
+        ok_p = probe_provider(name, url_s)
+        provider_results[name] = ok_p
+        checks.append(
+            {
+                "id": f"provider:{name}",
+                "label": f"供应商 · {name}",
+                "ok": ok_p,
+                "detail": "可达 / 认证就绪" if ok_p else "端点不可达或内置项未就绪",
+            }
+        )
+
+    def _is_failed(c: dict) -> bool:
+        if c.get("optional"):
+            return False
+        return not c.get("ok", False)
+
+    failed = [c for c in checks if _is_failed(c)]
+    passed = sum(1 for c in checks if c.get("ok"))
+    all_ok = len(failed) == 0
+
+    return {
+        "timestamp": ts,
+        "checks": checks,
+        "results": provider_results,
+        "summary": {
+            "all_ok": all_ok,
+            "passed": passed,
+            "total": len(checks),
+            "failed_count": len(failed),
+        },
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
-    def _send_json(self, payload, status=HTTPStatus.OK):
+    def _send_json(self, payload, status=HTTPStatus.OK, *, no_cache: bool = False):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        if no_cache:
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
         self.end_headers()
         self.wfile.write(data)
 
@@ -1759,6 +3856,9 @@ class Handler(BaseHTTPRequestHandler):
         body = path.read_bytes()
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        # 避免浏览器长期缓存单页，改 UI 后用户强刷即可看到新版本
+        if path.name == "index.html":
+            self.send_header("Cache-Control", "no-store, max-age=0, must-revalidate")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1777,6 +3877,55 @@ class Handler(BaseHTTPRequestHandler):
                         "state": {"alerts": [{"level": "error", "msg": str(e)}], "configValid": False},
                     },
                     status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+        elif path == "/api/gateway/logs":
+            try:
+                q = parse_qs(urlparse(self.path).query)
+                raw_n = (q.get("lines") or ["200"])[0]
+                try:
+                    nlines = int(raw_n)
+                except (TypeError, ValueError):
+                    nlines = 200
+                data = fetch_gateway_logs(lines=nlines)
+                self._send_json({"ok": bool(data.get("ok")), **data})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e), "lines": [], "text": ""}, status=HTTPStatus.BAD_REQUEST)
+        elif path == "/api/usage/snapshot":
+            try:
+                q = parse_qs(urlparse(self.path).query)
+                try:
+                    days = int((q.get("days") or ["7"])[0])
+                except (TypeError, ValueError):
+                    days = 7
+                try:
+                    lim = int((q.get("limit") or ["20"])[0])
+                except (TypeError, ValueError):
+                    lim = 20
+                raw_force = (q.get("force") or q.get("rebuild") or ["0"])[0]
+                force = str(raw_force).strip().lower() in ("1", "true", "yes", "on")
+                self._send_json(usage_snapshot_http_payload(days=days, limit=lim, force=force), no_cache=True)
+            except Exception as e:
+                self._send_json(
+                    {"ok": False, "error": str(e)},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                    no_cache=True,
+                )
+        elif path == "/api/backup/list":
+            try:
+                self._send_json({"ok": True, **list_admin_backups()})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+        elif path == "/api/openclaw/version-check":
+            try:
+                q = parse_qs(urlparse(self.path).query)
+                raw_force = (q.get("force") or ["0"])[0]
+                force = str(raw_force).strip().lower() in ("1", "true", "yes", "on")
+                self._send_json(openclaw_version_check_payload(force_refresh_latest=force), no_cache=True)
+            except Exception as e:
+                self._send_json(
+                    {"ok": False, "error": str(e)},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                    no_cache=True,
                 )
         else:
             self.send_response(HTTPStatus.NOT_FOUND)
@@ -1815,7 +3964,10 @@ class Handler(BaseHTTPRequestHandler):
         else:
             payload = {}
         try:
-            if path == "/api/selection":
+            if path == "/api/openclaw/update":
+                no_restart = payload.get("noRestart") is True
+                self._send_json(run_openclaw_builtin_update(no_restart=no_restart), no_cache=True)
+            elif path == "/api/selection":
                 config = read_config()
                 agents = config.setdefault("agents", {}).setdefault("defaults", {})
                 praw = payload.get("primary", "")
@@ -1857,25 +4009,42 @@ class Handler(BaseHTTPRequestHandler):
                         session_key=payload.get("sessionKey") or None,
                         strip_session_thinking=True,
                     )
-                # 网页模型可独立；提权/推理/队列/exec 等与最近活跃电报私聊一致（不抄 thinkingLevel）
-                web_telegram_sync = sync_web_session_from_telegram_direct()
-                # 思考只跟各模型在前端的 params.thinking：清掉所有会话 thinkingLevel，电报与网页均走配置
+                # 思考只跟各模型在前端的 params.thinking：清掉所有会话 thinkingLevel，各渠道均走配置
                 selection_extra_meta["sessionThinkingCleared"] = clear_session_thinking_levels()
                 selection_extra_meta["sessionContextSync"] = sync_all_sessions_context_tokens_from_config(config)
                 meta_out = {
                     "migrations": save_meta.get("migrations", []),
                     "sessionSync": session_sync,
-                    "webTelegramSync": web_telegram_sync,
                 }
                 meta_out.update(selection_extra_meta)
                 self._send_json({"ok": True, "state": build_state(), "meta": meta_out})
-            elif path == "/api/sync-web-from-telegram":
-                sk = payload.get("sourceSessionKey")
-                sk = sk.strip() if isinstance(sk, str) else None
-                meta = sync_web_session_from_telegram_direct(sk)
+            elif path == "/api/session/model-override":
+                sk = payload.get("sessionKey")
+                sk = sk.strip() if isinstance(sk, str) else ""
+                clear_flag = payload.get("clear") is True
+                if clear_flag:
+                    meta = set_session_model_override(sk, clear=True)
+                else:
+                    mr = payload.get("modelRef")
+                    mr = mr.strip() if isinstance(mr, str) else ""
+                    if not mr:
+                        raise ValueError("缺少 modelRef，或传 clear:true 以跟随全局路由")
+                    meta = set_session_model_override(sk, clear=False, model_ref=mr)
                 if not meta.get("ok"):
-                    raise ValueError(meta.get("error") or "对齐失败")
-                self._send_json({"ok": True, "state": build_state(), "meta": {"webTelegramSync": meta}})
+                    raise ValueError(meta.get("error") or "写入会话模型失败")
+                self._send_json({"ok": True, "state": build_state(), "meta": {"sessionModelOverride": meta}})
+            elif path == "/api/session/behavior":
+                sk = payload.get("sessionKey")
+                sk = sk.strip() if isinstance(sk, str) else ""
+                body = {
+                    k: payload[k]
+                    for k in ("reasoningLevel", "elevatedLevel")
+                    if k in payload
+                }
+                meta = set_session_behavior(sk, body)
+                if not meta.get("ok"):
+                    raise ValueError(meta.get("error") or "写入会话选项失败")
+                self._send_json({"ok": True, "state": build_state(), "meta": {"sessionBehavior": meta}})
             elif path == "/api/model":
                 config = read_config()
                 raw_pv = payload.get("provider", "")
@@ -2000,6 +4169,41 @@ class Handler(BaseHTTPRequestHandler):
                         },
                     }
                 )
+            elif path in ("/api/model/test", "/api/model/ttft"):
+                ref = payload.get("ref")
+                ref = ref.strip() if isinstance(ref, str) else ""
+                if not ref:
+                    raise ValueError("缺少 ref")
+                out = measure_model_test(ref)
+                body: dict = {"ok": bool(out.get("ok"))}
+                for k in (
+                    "seconds",
+                    "error",
+                    "api",
+                    "testCategory",
+                    "softWarning",
+                    "replyPreview",
+                ):
+                    if k in out and out[k] is not None:
+                        body[k] = out[k]
+                self._send_json(body)
+            elif path == "/api/provider/fetch-models":
+                p_raw = (payload.get("provider") or "").strip()
+                meta = fetch_provider_remote_models_preview(p_raw)
+                self._send_json({"ok": True, "meta": {"providerFetchModels": meta}})
+            elif path == "/api/provider/add-models":
+                p_raw = (payload.get("provider") or "").strip()
+                ids_body = payload.get("ids")
+                meta_add = add_models_to_provider_by_ids(p_raw, ids_body)
+                self._send_json({"ok": True, "state": build_state(), "meta": {"providerAddModels": meta_add}})
+            elif path == "/api/provider/sync-remote-models":
+                p_raw = (payload.get("provider") or "").strip()
+                meta_sync = sync_provider_remote_model_selection(
+                    p_raw,
+                    payload.get("remoteIds"),
+                    payload.get("selectedIds"),
+                )
+                self._send_json({"ok": True, "state": build_state(), "meta": {"providerSyncRemoteModels": meta_sync}})
             elif path == "/api/provider/delete":
                 config = read_config()
                 p_raw = (payload.get("provider") or "").strip()
@@ -2053,11 +4257,19 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif path == "/api/probe":
                 state = build_state()
-                results = {
-                    p["name"]: probe_provider(p["name"], p.get("baseUrl", ""))
-                    for p in state["providers"]
-                }
-                self._send_json({"ok": True, "results": results, "timestamp": datetime.now().strftime("%H:%M:%S")})
+                report = build_probe_report(state)
+                self._send_json({"ok": True, **report})
+            elif path == "/api/backup/create":
+                reason_raw = payload.get("reason")
+                reason = reason_raw.strip() if isinstance(reason_raw, str) else "manual"
+                meta_b = create_admin_backup(reason=reason or "manual")
+                self._send_json({"ok": True, "meta": {"adminBackup": meta_b}})
+            elif path == "/api/backup/restore":
+                bid = (payload.get("id") or "").strip()
+                if not bid:
+                    raise ValueError("缺少备份 id")
+                meta_r = restore_admin_backup(bid)
+                self._send_json({"ok": True, "state": build_state(), "meta": {"adminRestore": meta_r}})
             elif path == "/api/restart":
                 custom = os.environ.get("OPENCLAW_GATEWAY_RESTART_COMMAND", "").strip()
                 if custom:
@@ -2084,9 +4296,6 @@ class Handler(BaseHTTPRequestHandler):
                     if active != "active":
                         raise RuntimeError(f"重启后服务状态异常: {active or 'unknown'}")
                 self._send_json({"ok": True, "state": build_state()})
-            elif path == "/api/session-align":
-                # 与页头「同步」一致：只读当前磁盘配置与会话快照，不写 openclaw.json / sessions.json、不重启（请求体忽略）
-                self._send_json({"ok": True, "state": build_state(), "meta": {"sessionSync": None}})
             else:
                 self.send_response(HTTPStatus.NOT_FOUND)
                 self.end_headers()
@@ -2094,4 +4303,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
 
 if __name__ == "__main__":
+    start_admin_backup_scheduler()
+    start_usage_background_refresher()
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

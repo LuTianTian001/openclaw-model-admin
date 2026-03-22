@@ -16,6 +16,8 @@ USE_GIT="${USE_GIT:-1}"
 SKIP_OPENCLAW_CHECK="${SKIP_OPENCLAW_CHECK:-0}"
 # 1=首次无 .env 时复制 .env.example（可改为 0 关闭）
 INSTALL_COPY_ENV="${INSTALL_COPY_ENV:-1}"
+# 与仓库发布一致（仅用于安装日志提示；面板「管理端版本」以 server.py 默认或本变量为准）
+OCMA_RELEASE_VERSION="${OCMA_RELEASE_VERSION:-1.2.0}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -127,6 +129,7 @@ if [[ "$INSTALL_COPY_ENV" == "1" ]] && [[ ! -f .env ]] && [[ -f .env.example ]];
   echo "[install] 已复制 .env.example -> .env（可按需编辑；说明见 操作手册.md）"
 fi
 
+echo "[install] OpenClaw Model Admin v${OCMA_RELEASE_VERSION} | 一键安装完成；数据目录见 OPENCLAW_HOME / OPENCLAW_CONFIG_PATH（.env）"
 echo "[install] 手册: https://github.com/$REPO/blob/$BRANCH/操作手册.md | 智能体短提示词: README「智能体」代码块 或 $(pwd)/给OpenClaw的部署排障提示词.md"
 echo "[install] 启动 http://127.0.0.1:${OPENCLAW_MODEL_ADMIN_PORT:-8765}"
 exec ./start.sh

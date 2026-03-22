@@ -1,12 +1,14 @@
 # OpenClaw Model Admin
 
+**当前发布：v1.2.0**（[`CHANGELOG.md`](./CHANGELOG.md)）。**一键安装**仍是一条命令（见下节）；路线图见 CHANGELOG 末尾（下一大版本 **v2.0.0** 以「他人可一键部署」为第一目标）。
+
 本仓库为 **Linux 上**与 **OpenClaw** 网关配套的 **Web 管理面板**：在浏览器里改默认模型与 fallback、模型库、`openclaw.json` 里各模型的思考参数，并读写 `sessions.json` 与会话侧策略对齐。**依赖**：Python 3.10+、本机 **`openclaw` CLI**（保存前 `config validate`）、与网关**同一 Unix 用户**与同一套数据目录（默认 `~/.openclaw`）。
 
 **仅 GNU/Linux**；脚本为 `bash`，网关状态/端口回退依赖 **`systemctl`、`ss`**（无 systemd 时用环境变量里的自定义重启命令，见下表）。
 
 ### 详细操作手册（部署、Docker、systemd、FAQ）
 
-一键能覆盖的由 **`install.sh` / `start.sh`** 处理；**一键做不到的**（用户权限、防火墙、Docker 里访问宿主机、自定义重启命令等）在手册里写了**原因与具体处理步骤**：请阅读 **[操作手册.md](./操作手册.md)**。联调 PocketClaw / 网关白名单 / 会话模型覆盖等实录见 **[踩坑记录.md](./踩坑记录.md)**。
+一键能覆盖的由 **`install.sh` / `start.sh`** 处理；**一键做不到的**（用户权限、防火墙、Docker 里访问宿主机、自定义重启命令等）在手册里写了**原因与具体处理步骤**：请阅读 **[操作手册.md](./操作手册.md)**。联调 PocketClaw / 网关白名单 / 会话模型覆盖等实录见 **[踩坑记录.md](./踩坑记录.md)**。改面板前后端时请对照 **[FRONTEND-BACKEND-NOTEBOOK.md](./FRONTEND-BACKEND-NOTEBOOK.md)**（API、`build_state` 字段、易踩坑清单）。
 
 ---
 
@@ -19,9 +21,10 @@
 ## 功能概览
 
 - 路由：默认模型、fallback、主模型思考（`agents.defaults.models[<ref>].params.thinking`）
-- 全局：推理展示、提权、`applyToSessions`；与电报私聊对齐非思考项到网页主会话（保留网页 `modelOverride`）；可清全会话 `thinkingLevel`
+- 全局：推理展示、提权、`applyToSessions`；可清全会话 `thinkingLevel`（模型 / 推理展示 / 提权可按会话单独覆盖）
 - 模型库：按供应商管理
 - 保存前 `openclaw config validate`；「重启网关」默认 `systemctl restart`（可改）
+- **本机信息（v1.2.0+）**：OpenClaw CLI 版本、与 npm 对比是否最新；可一键执行 **`openclaw update`**（可选禁用，见环境变量表）
 
 ---
 
@@ -84,8 +87,13 @@ cd openclaw-model-admin && chmod +x start.sh && ./start.sh
 | `OPENCLAW_GATEWAY_SS_MARKERS` | `ss -ltn` 输出中要匹配的子串，逗号分隔 | `127.0.0.1:18789,[::1]:18789` |
 | `OPENCLAW_MODEL_ADMIN_HOST` / `PORT` | 面板监听 | `0.0.0.0` / `8765` |
 | `OPENCLAW_MODEL_ADMIN_PREFS_PATH` | 面板偏好文件 | 项目目录 `admin-prefs.json` |
+| `OPENCLAW_MODEL_ADMIN_VERSION` | 页内「管理端版本」展示字符串 | 与当前发布一致（默认随代码更新） |
 | `OPENCLAW_MODEL_ADMIN_SKIP_VALIDATE` | `1` 跳过 CLI 校验（无 `openclaw` 时） | 不跳过 |
 | `OPENCLAW_MODEL_ADMIN_DISABLE_STATE_VALIDATE_CACHE` | `1` 时每次打开页面都重新跑 `openclaw config validate`（调试用，**明显变慢**） | 不设置（默认按 `openclaw.json` 修改时间缓存校验结果） |
+| `OPENCLAW_ADMIN_OPENCLAW_VERSION_CHECK_SEC` | npm 最新版查询缓存周期（秒） | `43200`（12h） |
+| `OPENCLAW_ADMIN_OPENCLAW_CLI_CACHE_SEC` | 本机 `openclaw -V` 进程内缓存（秒） | `120` |
+| `OPENCLAW_ADMIN_OPENCLAW_UPDATE_DISABLE` | `1` 禁用网页「更新 OpenClaw」 | 不禁用 |
+| `OPENCLAW_ADMIN_OPENCLAW_UPDATE_TIMEOUT_SEC` | `openclaw update` 超时（秒） | `1800` |
 
 **页面加载**：刷新/二次进入时，后端会**缓存**对 `openclaw.json` 的 CLI 校验结果（文件未改则不再起子进程），首次进入或刚保存配置后仍会校验一次。
 
@@ -114,3 +122,8 @@ python3 -m py_compile server.py
 ## 说明
 
 直接改 `openclaw.json` 与 `sessions.json`，用前自行备份；行为以本机 OpenClaw 版本为准。
+
+### 版本与发布
+
+- 语义化发布号见 **[CHANGELOG.md](./CHANGELOG.md)**。
+- **给他人部署**：优先发送 **`README.md` 里「人类：一键命令」** 整段；复杂环境配合 **操作手册.md** 与 `.env.example`。

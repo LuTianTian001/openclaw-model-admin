@@ -7,186 +7,1476 @@
   <title>OpenClaw 管理</title>
   <style>
     :root {
-      --claude-bg: #f9f8f6;
+      --claude-bg: #f5f4f1;
+      --claude-bg-elevated: #faf9f7;
       --claude-surface: #ffffff;
-      --claude-border: #e8e7e1;
-      --claude-text: #212121;
-      --claude-muted: #6b6b6b;
-      --claude-accent: #d97757;
-      --claude-btn-primary: #353535;
-      --claude-success: #4a7c44;
-      --claude-danger: #c53030;
-      --radius: 12px;
+      --claude-border: #e6e4de;
+      --claude-border-strong: #d8d6cf;
+      --claude-text: #1a1a18;
+      --claude-muted: #5c5c56;
+      --claude-accent: #c86b4a;
+      --claude-accent-soft: rgba(200, 107, 74, 0.12);
+      --claude-btn-primary: #2a2a28;
+      --claude-success: #3d6b38;
+      --claude-danger: #b91c1c;
+      --shadow-xs: 0 1px 2px rgba(26, 26, 24, 0.04);
+      --shadow-sm: 0 2px 8px rgba(26, 26, 24, 0.06);
+      --shadow-md: 0 8px 24px rgba(26, 26, 24, 0.08);
+      --radius: 14px;
+      --radius-sm: 10px;
+      --radius-pill: 999px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+      --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+      --dur: 0.2s;
+      --text-caption: 12px;
+      --text-micro: 11px;
+      --lh-readable: 1.55;
+      --lh-caption: 1.45;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { touch-action: manipulation; }
-    body { margin: 0; background: var(--claude-bg); color: var(--claude-text); font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; line-height: 1.5; padding-bottom: 140px; overflow-x: hidden; }
-    header { background: rgba(249,248,246,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid var(--claude-border); padding: calc(10px + env(safe-area-inset-top)) 20px 10px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
-    header h1 { font-size: 17px; font-weight: 700; margin: 0; }
-    #topAlertBar { display: none; width: 100%; padding: 12px 20px; background: var(--claude-danger); color: #fff; font-size: 13px; font-weight: 700; text-align: center; position: relative; z-index: 99; animation: alertFlash 2s infinite; cursor: pointer; }
-    @keyframes alertFlash { 0% { opacity: 1; } 50% { opacity: 0.85; } 100% { opacity: 1; } }
-    .container { padding: 20px; max-width: 850px; margin: 0 auto; }
-    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 24px; }
-    .stat-item { background: var(--claude-surface); padding: 12px; border-radius: 12px; border: 1px solid var(--claude-border); text-align: center; }
-    .stat-label { font-size: 10px; color: var(--claude-muted); text-transform: uppercase; margin-bottom: 2px; font-weight: 600; }
-    .stat-value { font-size: 18px; font-weight: 700; line-height: 1.25; word-break: break-all; }
+    /* iOS：仅 body 隐藏横向溢出不够，html 也要约束，否则仍会出现整页左右拖动 */
+    html {
+      overflow-x: hidden;
+      max-width: 100%;
+      touch-action: manipulation;
+    }
+    :root {
+      --app-top-fixed-h: 88px;
+    }
+    body {
+      touch-action: manipulation;
+      margin: 0;
+      background: var(--claude-bg);
+      background-image: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(200, 107, 74, 0.06), transparent 55%);
+      color: var(--claude-text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.55;
+      padding-top: var(--app-top-fixed-h);
+      padding-bottom: 148px;
+      overflow-x: hidden;
+      max-width: 100%;
+      -webkit-font-smoothing: antialiased;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    }
+    /* 顶栏整体固定：滚动页面时标题与同步/应用/重启始终贴顶可见 */
+    .app-top-fixed {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 110;
+      max-width: 100%;
+      background: var(--claude-bg);
+      box-shadow: var(--shadow-xs);
+    }
+    header {
+      background: color-mix(in srgb, var(--claude-bg-elevated) 88%, transparent);
+      backdrop-filter: blur(16px) saturate(1.2);
+      -webkit-backdrop-filter: blur(16px) saturate(1.2);
+      border-bottom: 1px solid var(--claude-border);
+      padding: calc(12px + env(safe-area-inset-top)) 20px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px 12px;
+      position: relative;
+      max-width: 100%;
+      min-width: 0;
+      box-shadow: none;
+    }
+    header h1 { font-size: 15px; font-weight: 700; margin: 0; letter-spacing: -0.02em; line-height: 1.3; color: var(--claude-text); }
+    .header-brand { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-shrink: 0;
+      min-width: 0;
+      max-width: 100%;
+    }
+    /* 顶栏三键：同一套暖色强调 + 中性层次，尺寸略大于正文按钮 */
+    header .header-actions .header-action-btn {
+      height: 44px !important;
+      min-height: 44px !important;
+      min-width: 72px;
+      padding: 0 22px !important;
+      font-size: 15px !important;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border-radius: var(--radius-pill) !important;
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), filter var(--dur) var(--ease);
+      box-sizing: border-box;
+    }
+    header .header-actions .header-action-btn:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--claude-accent-soft);
+    }
+    header .header-actions .header-action-btn--sync {
+      border: 1.5px solid color-mix(in srgb, var(--claude-accent) 42%, var(--claude-border-strong)) !important;
+      background: color-mix(in srgb, var(--claude-accent-soft) 40%, var(--claude-surface)) !important;
+      color: color-mix(in srgb, var(--claude-text) 88%, var(--claude-accent)) !important;
+      box-shadow: var(--shadow-xs);
+    }
+    header .header-actions .header-action-btn--sync:hover {
+      background: color-mix(in srgb, var(--claude-accent-soft) 72%, var(--claude-surface)) !important;
+      border-color: color-mix(in srgb, var(--claude-accent) 58%, var(--claude-border-strong)) !important;
+    }
+    header .header-actions .header-action-btn--apply {
+      border: none !important;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--claude-accent) 88%, #fff) 0%, var(--claude-accent) 100%) !important;
+      color: #fff !important;
+      box-shadow: var(--shadow-xs), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    }
+    header .header-actions .header-action-btn--apply:hover {
+      filter: brightness(1.04);
+    }
+    header .header-actions .header-action-btn--restart {
+      border: 1.5px solid var(--claude-border-strong) !important;
+      background: var(--claude-surface) !important;
+      color: var(--claude-muted) !important;
+      box-shadow: var(--shadow-xs);
+    }
+    header .header-actions .header-action-btn--restart:hover {
+      background: var(--claude-bg-elevated) !important;
+      color: var(--claude-text) !important;
+      border-color: color-mix(in srgb, var(--claude-muted) 35%, var(--claude-border-strong)) !important;
+    }
+    header .header-actions .header-action-btn--apply:not(.success):not(.btn-error) .loading-icon {
+      border-color: rgba(255, 255, 255, 0.28);
+      border-top-color: #fff;
+    }
+    header .header-actions .header-action-btn--sync:not(.success):not(.btn-error) .loading-icon,
+    header .header-actions .header-action-btn--restart:not(.success):not(.btn-error) .loading-icon {
+      border-color: rgba(26, 26, 24, 0.1);
+      border-top-color: var(--claude-text);
+    }
+    header .header-actions .header-action-btn.success {
+      background: var(--claude-success) !important;
+      color: #fff !important;
+      border: none !important;
+      box-shadow: var(--shadow-xs) !important;
+      filter: none !important;
+    }
+    header .header-actions .header-action-btn.btn-error {
+      background: var(--claude-danger) !important;
+      color: #fff !important;
+      border: none !important;
+      box-shadow: var(--shadow-xs) !important;
+      filter: none !important;
+    }
+    #topAlertBar {
+      display: none;
+      width: 100%;
+      padding: 13px 20px;
+      background: linear-gradient(180deg, #c41e1e 0%, var(--claude-danger) 100%);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+      position: relative;
+      animation: alertFlash 2.5s ease-in-out infinite;
+      cursor: pointer;
+      letter-spacing: 0.01em;
+    }
+    @keyframes alertFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.92; } }
+    .container { padding: 20px; margin: 0 auto; min-width: 0; max-width: min(860px, 100%); }
+    .stats { display: grid; gap: 12px; margin-bottom: 22px; }
+    .stats.stats-top {
+      grid-template-columns: 1fr 1fr;
+    }
+    @media (max-width: 360px) {
+      .stats.stats-top {
+        grid-template-columns: 1fr;
+      }
+    }
+    .stat-item {
+      background: var(--claude-surface);
+      padding: 14px 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--claude-border);
+      text-align: center;
+      box-shadow: var(--shadow-xs);
+      transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+    }
+    .stat-item:hover { border-color: var(--claude-border-strong); box-shadow: var(--shadow-sm); }
+    .stat-label {
+      font-size: var(--text-caption);
+      color: var(--claude-muted);
+      text-transform: none;
+      margin-bottom: 5px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      line-height: var(--lh-caption);
+    }
+    .stat-value { font-size: 17px; font-weight: 700; line-height: 1.3; word-break: break-all; font-variant-numeric: tabular-nums; }
     .think-suffix { font-weight: 600; color: var(--claude-muted); font-size: 0.88em; }
-    .tab-nav { display: flex; background: rgba(0,0,0,0.04); border-radius: 10px; padding: 3px; margin-bottom: 24px; width: 100%; }
-    .tab-btn { flex: 1; background: none; border: none; padding: 9px 0; font-size: 14px; font-weight: 600; color: var(--claude-muted); cursor: pointer; border-radius: 8px; transition: all 0.2s; }
-    .tab-btn.active { background: var(--claude-surface); color: var(--claude-text); box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+    .tab-nav {
+      display: flex;
+      background: color-mix(in srgb, var(--claude-text) 5%, transparent);
+      border-radius: var(--radius-sm);
+      padding: 4px;
+      margin-bottom: 22px;
+      width: 100%;
+      border: 1px solid color-mix(in srgb, var(--claude-border) 80%, transparent);
+    }
+    .tab-btn {
+      flex: 1;
+      background: none;
+      border: none;
+      padding: 10px 6px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--claude-muted);
+      cursor: pointer;
+      border-radius: 8px;
+      transition: color var(--dur) var(--ease), background var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+    }
+    .tab-btn:hover { color: var(--claude-text); }
+    .tab-btn.active {
+      background: var(--claude-surface);
+      color: var(--claude-text);
+      box-shadow: var(--shadow-sm);
+    }
     .tab-content { display: none; }
-    .tab-content.active { display: block; animation: softFade 0.3s ease; }
-    @keyframes softFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-    .route-card { background: var(--claude-surface); border: 1px solid var(--claude-border); border-radius: var(--radius); padding: 18px; margin-bottom: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-    .route-card.primary { border-left: 4px solid var(--claude-accent); }
-    .route-title { font-size: 12px; font-weight: 700; color: var(--claude-muted); margin-bottom: 14px; text-transform: uppercase; }
+    .tab-content.active { display: block; animation: softFade 0.28s var(--ease); }
+    @keyframes softFade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+    .callout {
+      font-size: var(--text-caption);
+      color: var(--claude-muted);
+      line-height: var(--lh-readable);
+      margin: 0 0 16px 0;
+      padding: 14px 16px;
+      background: var(--claude-bg-elevated);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--claude-border);
+      box-shadow: var(--shadow-xs);
+    }
+    .callout code { font-family: var(--font-mono); font-size: 11px; background: color-mix(in srgb, var(--claude-text) 6%, transparent); padding: 2px 6px; border-radius: 5px; }
+    .callout-muted { text-align: center; margin-bottom: 12px; font-weight: 500; }
+    .field-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid color-mix(in srgb, var(--claude-border) 70%, transparent);
+    }
+    .field-row + .field-row { margin-top: 12px; padding-top: 12px; padding-bottom: 12px; }
+    .field-row--tight-top { margin-top: 0; padding-top: 0; border-top: none; }
+    .field-row--pre-panel { border-bottom: none; padding-bottom: 0; margin-bottom: 10px; }
+    .field-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--claude-muted);
+      flex-shrink: 0;
+    }
+    .field-label--block { display: block; margin-bottom: 6px; }
+    .compact-select { width: 104px !important; height: 34px !important; font-size: 13px !important; padding: 4px 10px !important; }
+    .route-card {
+      background: var(--claude-surface);
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow-xs);
+      transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+    }
+    .route-card:hover { box-shadow: var(--shadow-sm); }
+    .route-card.primary {
+      border-left: 4px solid var(--claude-accent);
+      background: linear-gradient(90deg, var(--claude-accent-soft) 0%, var(--claude-surface) 48%);
+    }
+    .route-title {
+      font-size: var(--text-caption);
+      font-weight: 600;
+      color: var(--claude-muted);
+      margin-bottom: 14px;
+      text-transform: none;
+      letter-spacing: 0.03em;
+      line-height: var(--lh-caption);
+    }
     .route-inputs { display: flex; gap: 10px; align-items: center; }
-    select, input { appearance: none; background: #fff; border: 1px solid var(--claude-border); border-radius: 10px; padding: 10px 14px; font-size: 16px !important; color: var(--claude-text); outline: none; transition: 0.2s; width: 100%; height: 44px; }
-    select:focus, input:focus { border-color: var(--claude-accent); background: #fff; }
-    select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b6b6b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 14px; padding-right: 32px; }
-    .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--claude-muted); margin-bottom: 6px; }
-    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 24px; }
-    button { height: 46px; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: 1px solid var(--claude-border); background: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; }
-    button:active { transform: scale(0.97); }
-    button.primary { background: var(--claude-btn-primary); color: #fff; border-color: var(--claude-btn-primary); }
-    button.ghost { background: #f3f2ef; color: var(--claude-text); border-color: transparent; }
-    button.sync-btn { height: 34px; font-size: 12px; border-radius: 17px; background: var(--claude-btn-primary); color: #fff; font-weight: 600; border: none; min-width: 90px; }
-    button.sync-btn.success { background: var(--claude-success) !important; color: #fff; }
-    button.sync-btn.btn-error { background: var(--claude-danger) !important; color: #fff; }
+    .route-sep { color: var(--claude-border-strong); font-weight: 300; user-select: none; }
+    select, input[type="text"], input[type="password"], input[type="number"] {
+      appearance: none;
+      background: var(--claude-surface);
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 16px !important;
+      color: var(--claude-text);
+      outline: none;
+      transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+      width: 100%;
+      height: 44px;
+    }
+    select:hover, input:hover { border-color: var(--claude-border-strong); }
+    select:focus, input:focus {
+      border-color: var(--claude-accent);
+      box-shadow: 0 0 0 3px var(--claude-accent-soft);
+    }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%235c5c56'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 14px;
+      padding-right: 32px;
+    }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-grid-2 > .form-group { min-width: 0; }
+    .form-grid-2 .input-tall,
+    .form-grid-2 .select-tall,
+    .form-grid-2 input[type="text"],
+    .form-grid-2 input[type="password"],
+    .form-grid-2 input[type="number"],
+    .form-grid-2 select { min-width: 0; }
+    .form-stack { display: grid; gap: 12px; }
+    .form-group { margin-bottom: 0; }
+    .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--claude-muted); margin-bottom: 7px; letter-spacing: 0.02em; }
+    .hint { display: block; margin-top: 6px; font-size: 11px; color: var(--claude-muted); line-height: 1.45; }
+    .hint-tight { display: block; margin-top: 4px; font-size: 10px; color: var(--claude-muted); line-height: 1.38; }
+    .hint-accent { display: none; color: var(--claude-accent); font-size: 10px; font-weight: 700; margin-top: 4px; }
+    .btn-cancel-edit { margin-top: 8px; }
+    .select-tall { width: 100%; height: 44px; font-size: 16px !important; padding: 10px 14px !important; }
+    .input-tall { width: 100%; height: 44px; font-size: 16px !important; padding: 10px 14px !important; }
+    .runtime-panel {
+      margin-top: 14px;
+      font-family: var(--font);
+      font-size: var(--text-caption);
+      color: var(--claude-text);
+      line-height: var(--lh-readable);
+      background: var(--claude-bg-elevated);
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      font-weight: 400;
+    }
+    .runtime-stack { display: flex; flex-direction: column; gap: 10px; }
+    .runtime-preview-block { display: flex; flex-direction: column; gap: 6px; }
+    .runtime-preview-block + .runtime-preview-block { padding-top: 14px; border-top: 1px solid color-mix(in srgb, var(--claude-border) 72%, transparent); }
+    .runtime-preview-summary { display: flex; flex-direction: column; gap: 4px; }
+    .runtime-line { line-height: var(--lh-readable); word-break: break-word; }
+    .runtime-line--detail { color: var(--claude-muted); font-size: var(--text-micro); line-height: var(--lh-caption); font-weight: 500; }
+    .runtime-session-wrap {
+      margin-top: 8px;
+      padding: 0;
+      background: var(--claude-surface);
+      border: 1px solid color-mix(in srgb, var(--claude-border) 80%, transparent);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-xs);
+      overflow: hidden;
+    }
+    .runtime-session-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .runtime-sess-section {
+      padding: 12px 14px;
+      border-bottom: 1px solid color-mix(in srgb, var(--claude-border) 65%, transparent);
+    }
+    .runtime-sess-section:last-of-type {
+      border-bottom: none;
+    }
+    .runtime-sess-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--claude-muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      line-height: 1.3;
+    }
+    .runtime-sess-selects.route-inputs {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr);
+      gap: 10px;
+      align-items: stretch;
+      width: 100%;
+    }
+    .runtime-sess-selects .route-sep {
+      align-self: center;
+      color: var(--claude-border-strong);
+      font-weight: 300;
+      padding: 0 2px;
+    }
+    .runtime-sess-selects .compact-select {
+      width: 100% !important;
+      min-width: 0;
+      max-width: 100%;
+      height: 42px !important;
+      font-size: 14px !important;
+    }
+    .runtime-sess-fields-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 14px;
+    }
+    @media (max-width: 480px) {
+      .runtime-sess-fields-grid { grid-template-columns: 1fr; }
+    }
+    .runtime-sess-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    .runtime-sess-field-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--claude-muted);
+      line-height: var(--lh-caption);
+    }
+    .runtime-sess-field .compact-select {
+      width: 100% !important;
+      min-width: 0;
+      height: 42px !important;
+      font-size: 14px !important;
+    }
+    /* 与模型库「测速 / 复用」同款 ghost：细边框 + 白底，不搞强调块 */
+    .runtime-sess-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 12px 14px;
+      background: color-mix(in srgb, var(--claude-bg-elevated) 55%, var(--claude-surface));
+      border-top: 1px solid color-mix(in srgb, var(--claude-border) 60%, transparent);
+    }
+    @media (max-width: 360px) {
+      .runtime-sess-actions { grid-template-columns: 1fr; }
+    }
+    button.runtime-sess-btn {
+      height: auto;
+      min-height: 36px;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 12px;
+      width: 100%;
+      justify-content: center;
+      line-height: 1.35;
+    }
+    .runtime-sess-actions button.runtime-sess-btn.ghost {
+      border: 1px solid var(--claude-border-strong);
+      background: var(--claude-surface);
+      box-shadow: 0 1px 0 rgba(26, 26, 24, 0.04);
+    }
+    .runtime-sess-actions button.runtime-sess-btn.ghost:hover {
+      border-color: color-mix(in srgb, var(--claude-text) 18%, var(--claude-border-strong));
+      background: var(--claude-bg-elevated);
+    }
+    .runtime-panel--top { margin-top: 0; margin-bottom: 16px; }
+    button {
+      height: 46px;
+      border-radius: var(--radius-sm);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.12s var(--ease), background var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+      border: 1px solid var(--claude-border);
+      background: var(--claude-surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 16px;
+    }
+    button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--claude-accent-soft); border-color: var(--claude-accent); }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
+    button.primary {
+      background: var(--claude-btn-primary);
+      color: #fff;
+      border-color: var(--claude-btn-primary);
+      box-shadow: var(--shadow-xs);
+    }
+    button.primary:hover { filter: brightness(1.06); }
+    button.ghost {
+      background: color-mix(in srgb, var(--claude-bg) 55%, #fff);
+      color: var(--claude-text);
+      border-color: transparent;
+    }
+    button.ghost:hover { background: color-mix(in srgb, var(--claude-bg) 35%, #fff); }
     button.primary.success { background: var(--claude-success) !important; border-color: var(--claude-success) !important; color: #fff; }
     button.primary.btn-error { background: var(--claude-danger) !important; border-color: var(--claude-danger) !important; color: #fff; }
-    button.ghost.btn-error { background: #fff5f5 !important; color: var(--claude-danger) !important; border-color: #feb2b2 !important; }
-    button.ghost.success { background: #e8f5e9 !important; color: var(--claude-success) !important; border-color: #a5d6a7 !important; }
-    button.ghost .loading-icon { border-color: rgba(0,0,0,0.12); border-top-color: var(--claude-text); }
-    .collapsible { border: 1px solid var(--claude-border); border-radius: var(--radius); margin-bottom: 10px; background: #fff; overflow: hidden; }
-    .collapsible summary { padding: 14px 18px; cursor: pointer; font-size: 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
-    .collapsible[open] summary { border-bottom: 1px solid var(--claude-border); background: #fafaf9; }
-    .collapsible-content { padding: 8px 18px 18px; background: #fff; }
-    .model-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #f5f5f3; }
-    .badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 5px; background: #f0f0ee; color: #666; margin-left: 8px; }
+    button.ghost.btn-error { background: #fff5f5 !important; color: var(--claude-danger) !important; border-color: #fecaca !important; }
+    button.ghost.success { background: #ecfdf3 !important; color: var(--claude-success) !important; border-color: #b7e4c7 !important; }
+    button.ghost .loading-icon { border-color: rgba(0,0,0,0.1); border-top-color: var(--claude-text); }
+    .btn-flash-x { font-size: 18px; line-height: 1; font-weight: 700; }
+    .collapsible { border: 1px solid var(--claude-border); border-radius: var(--radius); margin-bottom: 10px; background: var(--claude-surface); overflow: hidden; box-shadow: var(--shadow-xs); }
+    .collapsible summary { padding: 14px 18px; cursor: pointer; font-size: 14px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; border-radius: inherit; }
+    .collapsible summary:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--claude-accent); }
+    .collapsible[open] summary { border-bottom: 1px solid var(--claude-border); background: var(--claude-bg-elevated); }
+    .collapsible-content { padding: 8px 18px 18px; background: var(--claude-surface); }
+    /* 模型库 */
+    .library-root { min-height: 8px; }
+    .library-provider { margin-bottom: 12px; }
+    .library-provider summary { gap: 12px; align-items: center; }
+    .library-provider summary::-webkit-details-marker { display: none; }
+    .library-provider .prov-summary-row {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 10px;
+      flex: 1;
+      min-width: 0;
+      width: 100%;
+    }
+    .library-provider .prov-head { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; flex: 1; }
+    /* 与工具栏「一键测速 / 复用」同款的获取列表按钮 */
+    .library-provider summary button.prov-fetch-btn.ghost {
+      flex-shrink: 0;
+      height: auto;
+      min-height: 36px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      white-space: nowrap;
+      border: 1px solid var(--claude-border-strong);
+      background: var(--claude-surface);
+      box-shadow: 0 1px 0 rgba(26, 26, 24, 0.04);
+    }
+    .library-provider summary button.prov-fetch-btn.ghost:hover {
+      border-color: color-mix(in srgb, var(--claude-text) 18%, var(--claude-border-strong));
+      background: var(--claude-bg-elevated);
+    }
+    .library-provider .prov-name { font-size: 15px; font-weight: 700; letter-spacing: -0.015em; word-break: break-all; }
+    .library-provider .prov-meta { font-size: var(--text-micro); font-weight: 600; color: var(--claude-muted); text-transform: none; letter-spacing: 0.02em; line-height: var(--lh-caption); }
+    .library-provider summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--claude-muted); border-bottom: 2px solid var(--claude-muted); transform: rotate(-45deg); flex-shrink: 0; margin-left: 8px; opacity: 0.55; transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease); }
+    .library-provider[open] summary::after { transform: rotate(45deg); opacity: 0.85; }
+    .library-toolbar {
+      display: grid;
+      gap: 10px;
+      align-items: stretch;
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid color-mix(in srgb, var(--claude-border) 75%, transparent);
+    }
+    .library-toolbar--1 { grid-template-columns: 1fr; }
+    .library-toolbar--2 { grid-template-columns: 1fr 1fr; }
+    .library-toolbar--3 { grid-template-columns: 1fr 1fr 1fr; }
+    .library-toolbar button {
+      height: auto;
+      min-height: 36px;
+      padding: 8px 12px;
+      font-size: 13px;
+      line-height: 1.35;
+      border-radius: var(--radius-sm);
+      width: 100%;
+      min-width: 0;
+      justify-content: center;
+      text-align: center;
+    }
+    .library-toolbar button.ghost,
+    .library-model-actions button.ghost {
+      border: 1px solid var(--claude-border-strong);
+      background: var(--claude-surface);
+      box-shadow: 0 1px 0 rgba(26, 26, 24, 0.04);
+    }
+    .library-toolbar button.ghost:hover,
+    .library-model-actions button.ghost:hover {
+      border-color: color-mix(in srgb, var(--claude-text) 18%, var(--claude-border-strong));
+      background: var(--claude-bg-elevated);
+    }
+    .library-toolbar .btn-library-danger,
+    .library-model-actions .btn-library-danger {
+      color: var(--claude-danger);
+      border-color: #e7a3a3;
+      background: #fffafa;
+    }
+    .library-toolbar .btn-library-danger:hover,
+    .library-model-actions .btn-library-danger:hover {
+      border-color: #d97777;
+      background: #fff5f5;
+    }
+    .library-models { display: flex; flex-direction: column; gap: 14px; }
+    .library-model-card {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      padding: 16px 18px;
+      background: linear-gradient(165deg, var(--claude-bg-elevated) 0%, color-mix(in srgb, var(--claude-surface) 92%, var(--claude-bg)) 100%);
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-xs);
+    }
+    .library-model-card:last-child { margin-bottom: 2px; }
+    .library-model-body { width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 0; }
+    .library-model-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid color-mix(in srgb, var(--claude-border) 65%, transparent);
+    }
+    .library-model-head strong {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .library-model-head .think-suffix { flex-shrink: 0; }
+    .library-model-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--claude-muted);
+      line-height: 1.5;
+    }
+    .library-meta-row {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      width: 100%;
+    }
+    .library-meta-label {
+      font-size: var(--text-micro);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: none;
+      color: var(--claude-muted);
+      opacity: 0.92;
+    }
+    .library-meta-val {
+      width: 100%;
+      font-size: 11px;
+      word-break: break-all;
+    }
+    .library-meta-val--mono {
+      font-family: var(--font-mono);
+      opacity: 0.95;
+    }
+    .library-meta-val code {
+      font-size: 11px;
+      background: color-mix(in srgb, var(--claude-text) 6%, transparent);
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-family: var(--font-mono);
+    }
+    .library-model-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      justify-content: space-between;
+      width: 100%;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid color-mix(in srgb, var(--claude-border) 78%, transparent);
+    }
+    .library-model-actions-btns {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .library-model-actions button { height: 36px; padding: 0 14px; font-size: 13px; border-radius: var(--radius-sm); }
+    .library-model-actions .btn-model-test { flex-shrink: 0; }
+    /* 测速结果在最左侧；色带对齐 ClawPanel：<3s 绿、<8s 黄、否则红 */
+    .library-test-badge {
+      flex: 0 1 auto;
+      min-width: 3.25em;
+      max-width: min(42%, 200px);
+      font-size: var(--text-caption);
+      font-weight: 600;
+      text-align: left;
+      line-height: var(--lh-caption);
+      word-break: break-word;
+    }
+    .library-test-badge--muted { color: var(--claude-muted); }
+    .library-test-badge--fast { color: var(--claude-success); }
+    .library-test-badge--mid { color: #9a6b2d; }
+    .library-test-badge--slow { color: var(--claude-danger); }
+    .library-empty { text-align: center; color: var(--claude-muted); padding: 32px 18px; font-size: 14px; background: var(--claude-bg-elevated); border-radius: var(--radius); border: 1px dashed var(--claude-border-strong); }
+    .badge { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--claude-text) 7%, transparent); color: var(--claude-muted); margin-left: 0; }
     .badge.active { background: var(--claude-accent); color: #fff; }
-    .dock { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(249,248,246,0.92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--claude-border); padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); display: flex; justify-content: space-between; align-items: center; z-index: 100; }
-    .status-msg { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--claude-success); }
-    .status-dot.error { background: var(--claude-danger); }
+    .dock {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: color-mix(in srgb, var(--claude-bg-elevated) 92%, transparent);
+      backdrop-filter: blur(16px) saturate(1.1);
+      -webkit-backdrop-filter: blur(16px) saturate(1.1);
+      border-top: 1px solid var(--claude-border);
+      padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      z-index: 100;
+      box-shadow: 0 -4px 20px rgba(26, 26, 24, 0.05);
+    }
+    .dock .diag-info { min-width: 0; flex: 1; }
+    .status-msg { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .status-msg small { font-weight: 500; }
+    .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--claude-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--claude-success) 22%, transparent); flex-shrink: 0; }
+    .status-dot.error { background: var(--claude-danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--claude-danger) 20%, transparent); }
+    .probe-abnormal { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .probe-pill { font-size: var(--text-micro); color: var(--claude-danger); background: #fff5f5; border: 1px solid #fecaca; padding: 3px 9px; border-radius: var(--radius-pill); font-weight: 700; letter-spacing: 0.02em; line-height: var(--lh-caption); }
+    .probe-summary-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+    .probe-detail-link {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--claude-accent);
+      background: none;
+      border: none;
+      padding: 2px 0;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      flex-shrink: 0;
+    }
+    .probe-detail-link:disabled { opacity: 0.45; cursor: not-allowed; text-decoration: none; }
+    .probe-detail-link:not(:disabled):hover { color: color-mix(in srgb, var(--claude-accent) 75%, #000); }
+    .btn-dock-probe { height: 40px; padding: 0 18px; font-size: 13px; border-radius: var(--radius-sm); width: auto; flex-shrink: 0; }
+    .probe-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 240;
+      background: rgba(26, 26, 24, 0.45);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .probe-modal-overlay[aria-hidden="false"] { display: flex; }
+    .probe-modal {
+      width: 100%;
+      max-width: 520px;
+      max-height: min(86vh, 640px);
+      background: var(--claude-surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--claude-border);
+      box-shadow: var(--shadow-md);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .probe-modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--claude-border);
+      background: var(--claude-bg-elevated);
+      flex-shrink: 0;
+    }
+    .probe-modal-head h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+    .probe-modal-close {
+      height: 36px;
+      padding: 0 14px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--claude-border);
+      background: var(--claude-surface);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .probe-modal-close:hover { background: var(--claude-bg-elevated); }
+    .probe-modal-body {
+      padding: 14px 18px 18px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .fetch-models-modal.probe-modal { max-width: min(640px, 100%); }
+    .fetch-models-hint {
+      margin: 0 0 8px 0;
+      font-size: 12px;
+      color: var(--claude-muted);
+      line-height: 1.5;
+    }
+    .fetch-models-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 10px;
+      margin-bottom: 10px;
+    }
+    /* 全选 / 全不选 固定同一行，不与筛选框拆成两行各一个 */
+    .fetch-models-bulk {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .fetch-models-bulk .ghost {
+      height: 36px;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .fetch-models-filter {
+      flex: 1 1 180px;
+      min-width: 0;
+      height: 36px;
+      padding: 0 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--claude-border);
+      background: var(--claude-surface);
+      font-size: 13px;
+    }
+    .fetch-models-scroll {
+      max-height: min(52vh, 420px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-sm);
+      background: var(--claude-bg-elevated);
+      padding: 6px 8px;
+    }
+    .fetch-models-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 8px 10px;
+      padding: 6px 8px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .fetch-models-row:hover { background: color-mix(in srgb, var(--claude-border) 35%, transparent); }
+    .fetch-models-row.fetch-models-row--inconfig {
+      border-left: 3px solid color-mix(in srgb, var(--claude-success) 75%, var(--claude-border));
+      padding-left: 9px;
+      margin-left: 2px;
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--claude-success) 6%, transparent);
+    }
+    .fetch-models-row input { margin-top: 3px; flex-shrink: 0; }
+    .fetch-models-id {
+      font-family: var(--font-mono);
+      word-break: break-all;
+      line-height: 1.35;
+      flex: 1;
+      min-width: 0;
+    }
+    .fetch-models-badge {
+      flex-shrink: 0;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--claude-success);
+      padding: 2px 7px;
+      border-radius: var(--radius-pill);
+      border: 1px solid color-mix(in srgb, var(--claude-success) 35%, var(--claude-border));
+      background: color-mix(in srgb, var(--claude-success) 10%, var(--claude-surface));
+    }
+    .fetch-models-foot {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      padding-top: 14px;
+      margin-top: 4px;
+      border-top: 1px solid var(--claude-border);
+      flex-shrink: 0;
+    }
+    .probe-check-card {
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--claude-border);
+      padding: 12px 14px;
+      background: var(--claude-bg-elevated);
+    }
+    .probe-check-card.probe-row-ok { border-left: 3px solid var(--claude-success); }
+    .probe-check-card.probe-row-fail { border-left: 3px solid var(--claude-danger); }
+    .probe-check-card.probe-row-warn { border-left: 3px solid color-mix(in srgb, var(--claude-muted) 50%, var(--claude-border-strong)); }
+    .probe-check-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 10px; margin-bottom: 6px; }
+    .probe-check-status { font-size: var(--text-micro); font-weight: 700; color: var(--claude-muted); }
+    .probe-row-ok .probe-check-status { color: var(--claude-success); }
+    .probe-row-fail .probe-check-status { color: var(--claude-danger); }
+    .probe-check-title { margin: 0; font-size: 14px; font-weight: 700; flex: 1; min-width: 0; }
+    .probe-check-desc { margin: 0 0 8px 0; font-size: 12px; color: var(--claude-muted); line-height: 1.5; }
+    .probe-check-detail { margin: 0; font-size: 13px; line-height: 1.45; word-break: break-word; }
+    .probe-issues { margin: 8px 0 0 0; padding-left: 1.1em; font-size: 12px; color: var(--claude-danger); line-height: 1.5; }
+    .page-meta-bottom { margin-top: 20px; margin-bottom: 8px; }
+    .page-meta-bottom .overview-path { font-size: 11px; word-break: break-all; font-family: var(--font-mono); color: var(--claude-text); }
+    .page-meta-bottom summary { font-size: 13px; }
+    .gateway-log-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 10px;
+      margin-bottom: 10px;
+    }
+    .gateway-log-toolbar select {
+      height: 36px;
+      padding: 0 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--claude-border);
+      background: var(--claude-surface);
+      font-size: 13px;
+    }
+    .gateway-log-toolbar .ghost {
+      height: 36px;
+      padding: 0 14px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid var(--claude-border-strong);
+      background: var(--claude-surface);
+      box-shadow: 0 1px 0 rgba(26, 26, 24, 0.04);
+    }
+    .gateway-log-pre {
+      margin: 0;
+      padding: 12px 14px;
+      max-height: min(360px, 48vh);
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--claude-text);
+      background: color-mix(in srgb, var(--claude-bg) 40%, var(--claude-bg-elevated));
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-sm);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .gateway-log-meta {
+      font-size: 11px;
+      color: var(--claude-muted);
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+    /* 使用情况：与本机信息同款折叠 */
+    .home-usage-details.collapsible.page-meta-bottom {
+      margin-top: 24px;
+      margin-bottom: 12px;
+    }
+    .home-usage-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    @media (max-width: 720px) {
+      .home-usage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 360px) {
+      .home-usage-grid { grid-template-columns: 1fr; }
+    }
+    .home-usage-cell {
+      background: color-mix(in srgb, var(--claude-bg-elevated) 65%, var(--claude-surface));
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-sm);
+      padding: 12px 12px;
+      min-width: 0;
+    }
+    .home-usage-k {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--claude-muted);
+      margin-bottom: 6px;
+      line-height: 1.3;
+    }
+    .home-usage-v {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.35;
+      word-break: break-word;
+      font-variant-numeric: tabular-nums;
+    }
+    .home-usage-v--sub {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--claude-muted);
+      margin-top: 4px;
+    }
+    .usage-root {
+      display: grid;
+      gap: 18px;
+    }
+    .usage-top-grid.home-usage-grid {
+      margin-bottom: 0;
+    }
+    .usage-section-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--claude-muted);
+      margin-bottom: 8px;
+    }
+    .usage-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-sm);
+      background: color-mix(in srgb, var(--claude-bg-elevated) 50%, var(--claude-surface));
+    }
+    .usage-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .usage-table th,
+    .usage-table td {
+      padding: 9px 11px;
+      text-align: left;
+      border-bottom: 1px solid var(--claude-border);
+      vertical-align: top;
+    }
+    .usage-table th {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--claude-muted);
+      background: color-mix(in srgb, var(--claude-surface) 88%, transparent);
+    }
+    .usage-table tr:last-child td {
+      border-bottom: none;
+    }
+    .usage-table .cell-mono {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      word-break: break-all;
+      max-width: 220px;
+    }
+    .usage-footnote {
+      font-size: 11px;
+      color: var(--claude-muted);
+      line-height: 1.45;
+      margin: 0;
+    }
+    .usage-admin-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .usage-admin-toolbar .ghost,
+    .usage-admin-toolbar .primary {
+      height: 32px;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+    }
+    .usage-cp-desc {
+      font-size: 12px;
+      color: var(--claude-muted);
+      margin: -6px 0 6px 0;
+      line-height: 1.45;
+    }
+    .usage-cache-hint {
+      font-size: 11px;
+      color: var(--claude-muted);
+      margin: 0 0 14px 0;
+      line-height: 1.45;
+      opacity: 0.92;
+    }
+    .usage-cp-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .usage-cp-stat-card {
+      background: color-mix(in srgb, var(--claude-bg-elevated) 65%, var(--claude-surface));
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      min-width: 0;
+    }
+    .usage-cp-stat-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--claude-muted);
+      margin-bottom: 6px;
+    }
+    .usage-cp-stat-value {
+      font-size: 18px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+      word-break: break-word;
+    }
+    .usage-cp-stat-meta {
+      font-size: 11px;
+      color: var(--claude-muted);
+      margin-top: 6px;
+      font-weight: 600;
+    }
+    .usage-cp-tops-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .usage-cp-top-card {
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      background: color-mix(in srgb, var(--claude-surface) 92%, transparent);
+      min-width: 0;
+    }
+    .usage-cp-top-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--claude-muted);
+      margin-bottom: 8px;
+      letter-spacing: 0.04em;
+    }
+    .usage-cp-top-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--claude-border);
+      font-size: 12px;
+    }
+    .usage-cp-top-row:last-child {
+      border-bottom: none;
+    }
+    .usage-cp-top-l {
+      font-weight: 600;
+      color: var(--claude-text, inherit);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .usage-cp-top-r {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--claude-muted);
+      flex-shrink: 0;
+    }
+    .usage-cp-section-title {
+      font-size: 12px;
+      font-weight: 800;
+      margin: 16px 0 8px 0;
+      color: var(--claude-text, inherit);
+    }
+    .usage-cp-token-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      padding: 10px 0;
+      font-size: 12px;
+    }
+    .usage-daily-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      height: 120px;
+      padding: 8px 4px 0 4px;
+      overflow-x: auto;
+    }
+    .usage-daily-bar-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      min-width: 28px;
+      height: 100%;
+    }
+    .usage-daily-bar {
+      width: 100%;
+      max-width: 22px;
+      min-height: 2px;
+      background: color-mix(in srgb, var(--claude-accent, #6366f1) 85%, var(--claude-border));
+      border-radius: 3px 3px 0 0;
+      margin-top: auto;
+    }
+    .usage-daily-label {
+      font-size: 10px;
+      color: var(--claude-muted);
+      margin-top: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    .usage-cp-session-list {
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .usage-cp-session-row {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--claude-border);
+      background: color-mix(in srgb, var(--claude-bg-elevated) 40%, var(--claude-surface));
+    }
+    .usage-cp-session-row:last-child {
+      border-bottom: none;
+    }
+    .usage-cp-session-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .usage-cp-session-key {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      word-break: break-all;
+    }
+    .usage-cp-flag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--claude-border) 50%, transparent);
+      color: var(--claude-muted);
+      font-weight: 700;
+    }
+    .usage-cp-session-meta {
+      font-size: 11px;
+      color: var(--claude-muted);
+      font-weight: 600;
+    }
+    .usage-sys-subtitle {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--claude-muted);
+      margin: 4px 0 8px 0;
+    }
+    .backup-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: 12px 0 8px 0;
+    }
+    .backup-toolbar .ghost {
+      height: 36px;
+      padding: 0 14px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid var(--claude-border-strong);
+      background: var(--claude-surface);
+      box-shadow: 0 1px 0 rgba(26, 26, 24, 0.04);
+    }
+    .backup-path-hint {
+      font-size: 11px;
+      word-break: break-all;
+      font-family: var(--font-mono);
+      color: var(--claude-muted);
+      line-height: 1.45;
+    }
+    /* 从备份恢复：页内展开动效，不用弹窗 */
+    .backup-restore-panel {
+      display: grid;
+      gap: 10px;
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transform: translateY(-8px);
+      transition:
+        max-height 0.42s var(--ease),
+        opacity 0.32s var(--ease),
+        transform 0.38s var(--ease),
+        margin-top 0.38s var(--ease),
+        padding-top 0.38s var(--ease);
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 1px solid transparent;
+      pointer-events: none;
+    }
+    .backup-restore-panel.is-open {
+      max-height: 360px;
+      opacity: 1;
+      transform: translateY(0);
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top-color: color-mix(in srgb, var(--claude-border) 75%, transparent);
+      pointer-events: auto;
+    }
+    .backup-restore-label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin: 0;
+    }
+    .backup-restore-select {
+      width: 100%;
+      max-width: none;
+      height: 42px;
+      padding: 0 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--claude-border);
+      background: var(--claude-surface);
+      font-size: 14px;
+    }
+    .backup-restore-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+    .backup-restore-actions .ghost,
+    .backup-restore-actions .primary {
+      height: 40px;
+      padding: 0 16px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .route-card .route-title--sub {
+      font-size: var(--text-caption);
+      margin: 14px 0 10px 0;
+      padding-top: 12px;
+      border-top: 1px solid color-mix(in srgb, var(--claude-border) 70%, transparent);
+    }
+    #toastMini {
+      display: none;
+      position: fixed;
+      left: 50%;
+      bottom: calc(88px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      z-index: 220;
+      max-width: min(92vw, 360px);
+      padding: 10px 16px;
+      background: var(--claude-text);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-md);
+      pointer-events: none;
+      text-align: center;
+    }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    .loading-icon { width: 14px; height: 14px; border: 2.5px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .loading-icon { width: 15px; height: 15px; border: 2.5px solid rgba(255,255,255,0.22); border-top-color: #fff; border-radius: 50%; animation: spin 0.75s linear infinite; }
   </style>
 </head>
 <body>
-  <div id="topAlertBar" onclick="restartService()">⚠ 系统网关已断开连接，点击此处尝试重启服务</div>
-  <header>
-    <div style="display:flex; flex-direction:column;"><h1>OpenClaw 管理</h1><div id="configPathHint" style="font-size:10px; color:var(--claude-muted); word-break:break-all;">openclaw.json</div></div>
-    <button class="sync-btn" id="syncBtn" onclick="manualSync()" title="仅从磁盘重新读取配置并刷新本页显示，不修改 openclaw.json、不写 sessions.json、不重启网关">同步</button>
-  </header>
+  <div class="app-top-fixed" id="appTopFixed">
+    <div id="topAlertBar" onclick="restartService()">⚠ 系统网关已断开连接，点击此处尝试重启服务</div>
+    <header>
+      <div class="header-brand"><h1>OpenClaw 管理</h1></div>
+      <div class="header-actions">
+        <button type="button" class="header-action-btn header-action-btn--sync" id="syncBtn" onclick="manualSync()" title="仅从磁盘重新读取配置并刷新本页显示，不修改 openclaw.json、不写 sessions.json、不重启网关">同步</button>
+        <button type="button" class="header-action-btn header-action-btn--apply" id="saveBtn" onclick="saveSelection()" title="写入全局路由与选项 → 按当前界面同步各会话模型/推理/提权 → 重启网关（与会话区「写入会话」「跟随全局」同一套完整下发）">应用</button>
+        <button type="button" class="header-action-btn header-action-btn--restart" id="restartBtn" onclick="restartService()" title="仅重启网关服务，不写 openclaw.json">重启</button>
+      </div>
+    </header>
+  </div>
   <div class="container">
-    <div id="pageLoadHint" style="text-align:center;padding:10px 12px;margin-bottom:8px;color:var(--claude-muted);font-size:13px;background:#fafaf9;border-radius:10px;border:1px solid var(--claude-border);">正在载入配置…</div>
-    <div class="stats">
-      <div class="stat-item"><span class="stat-label">默认模型</span><div class="stat-value" id="statPrimary">-</div></div>
-      <div class="stat-item"><span class="stat-label">备用顺位</span><div class="stat-value" id="statFallbacks">0</div></div>
+    <div id="pageLoadHint" class="callout callout-muted">正在载入配置…</div>
+    <div class="stats stats-top">
       <div class="stat-item"><span class="stat-label">供应商</span><div class="stat-value" id="statProviders">0</div></div>
+      <div class="stat-item"><span class="stat-label">总模型数</span><div class="stat-value" id="statModelsTotal">0</div></div>
     </div>
     <div class="tab-nav">
-      <button class="tab-btn active" onclick="switchTab('tab-routing')">路由设置</button>
-      <button class="tab-btn" onclick="switchTab('tab-library')">模型库</button>
-      <button class="tab-btn" onclick="switchTab('tab-add')">接入配置</button>
+      <button type="button" class="tab-btn active" data-tab="tab-routing" onclick="switchTab('tab-routing')">路由设置</button>
+      <button type="button" class="tab-btn" data-tab="tab-library" onclick="switchTab('tab-library')">模型库</button>
+      <button type="button" class="tab-btn" data-tab="tab-add" onclick="switchTab('tab-add')">接入配置</button>
     </div>
     <div id="tab-routing" class="tab-content active">
       <div class="routing-container">
-        <p style="font-size:12px; color:var(--claude-muted); line-height:1.55; margin:0 0 14px 0; padding:11px 14px; background:#fafaf9; border-radius:10px; border:1px solid var(--claude-border);"><strong>策略：</strong><strong>思考（Think）</strong>只跟你在管理端为<strong>各模型</strong>配置的 <code>agents.defaults.models[&lt;ref&gt;].params.thinking</code> 走；每次<strong>应用并重启</strong>会<strong>清除所有会话的 thinkingLevel</strong>，电报与网页都按当前选用模型的配置生效。<strong>下方「全局主模型」</strong>写入 <code>agents.defaults.model.primary</code>：<strong>仅当某渠道/会话尚未自己选过模型</strong>（无 <code>providerOverride</code>/<code>modelOverride</code> 等）时才会跟全局默认走；<strong>已在该渠道选过模型的，任何时候改默认都不应动它的选择。</strong><strong>提权、推理过程展示、队列、exec</strong>等：网页主会话与<strong>最近活跃的 Telegram 私聊</strong>对齐（不抄思考、不删网页 <code>modelOverride</code>）。下方预览两路会话。</p>
+        <div id="runtimeInfo" class="runtime-panel runtime-panel--top">等待同步…</div>
         <div class="route-card primary">
-          <div class="route-title">全局主模型</div>
-          <div class="route-inputs"><select id="pProvider"></select><div style="color:var(--claude-border)">/</div><select id="pModel"></select></div>
-          <div style="margin-top:14px; padding-top:14px; border-top:1px solid #f0f0ee;">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-              <label style="font-size:13px; font-weight:700; color:var(--claude-muted)" title="写入 agents.defaults.models[&lt;主 ref&gt;].params.thinking；保存时清除各会话 thinkingLevel，与「接入配置」一致">模型思考</label>
-              <select id="pThinkingEnabled" style="width:100px; height:32px; font-size:13px!important; padding:4px 10px;">
-                <option value="off">关闭</option>
-                <option value="on">开启</option>
-              </select>
-            </div>
-            <div id="pThinkingParamsRow" style="display:none;">
-              <label style="font-size:12px; font-weight:700; color:var(--claude-muted); display:block; margin-bottom:6px;">思考档位</label>
-              <input id="pThinkingValue" placeholder="如 low、high；留空按 low" style="width:100%; height:40px; font-size:15px!important; padding:8px 12px;">
-            </div>
-          </div>
-        </div>
-        <div class="route-card"><div class="route-title">备份顺位 1</div><div class="route-inputs"><select id="f1Provider"></select><div style="color:var(--claude-border)">/</div><select id="f1Model"></select></div></div>
-        <div class="route-card"><div class="route-title">备份顺位 2</div><div class="route-inputs"><select id="f2Provider"></select><div style="color:var(--claude-border)">/</div><select id="f2Model"></select></div></div>
-        <div class="route-card">
           <div class="route-title">全局选项</div>
-          <div style="margin-top:0; display:flex; align-items:center; justify-content:space-between; padding-bottom:12px; border-bottom:1px solid #f0f0ee;">
-            <label style="font-size:13px; font-weight:700; color:var(--claude-muted)">展现推理过程</label>
-            <select id="reasoningDisplay" style="width:100px; height:32px; font-size:13px!important; padding:4px 10px;" title="全局统一；开启「下发到各会话」或保存并同步时写入各会话的 reasoningLevel">
+          <div class="field-row field-row--tight-top">
+            <label class="field-label">展现推理过程</label>
+            <select id="reasoningDisplay" class="compact-select" title="全局默认；顶栏「应用」下发全会话。各渠道会话在运行状态用同一组「写入会话 / 跟随全局」覆盖本条。">
               <option value="off">关闭</option>
               <option value="on">开启</option>
             </select>
           </div>
-          <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; padding-top:12px; border-top:1px solid #f0f0ee;">
-            <label style="font-size:13px; font-weight:700; color:var(--claude-muted)">提权模式 (Elevated)</label>
-            <select id="elevatedDefault" style="width:100px; height:32px; font-size:13px!important; padding:4px 10px;">
+          <div class="field-row">
+            <label class="field-label">提权模式 (Elevated)</label>
+            <select id="elevatedDefault" class="compact-select" title="全局默认；顶栏「应用」下发全会话。各会话「写入会话」会同时提交模型+推理+提权。">
               <option value="off">关闭</option>
               <option value="full">开启</option>
             </select>
           </div>
-          <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; padding-top:12px; border-top:1px solid #f0f0ee;">
-            <label style="font-size:13px; font-weight:700; color:var(--claude-muted)" title="开启：应用时同步提权/推理并清除会话思考覆盖；/think 可再写回">保存时下发全局选项到各会话</label>
-            <select id="applyToSessions" style="width:100px; height:32px; font-size:13px!important; padding:4px 10px;" title="开启：应用并重启时向各会话下发提权/推理，并清除 thinkingLevel。无论开关，都会把电报私聊行为同步到网页主会话（不删网页 modelOverride）">
-              <option value="on">开启</option>
-              <option value="off">关闭</option>
-            </select>
+          <div class="route-title route-title--sub">主模型与备用顺位</div>
+          <div class="field-row field-row--pre-panel" style="border-bottom:none;padding-bottom:0;margin-bottom:8px;">
+            <span class="field-label" style="align-self:center;">全局主模型</span>
+            <div class="route-inputs" style="flex:1;min-width:0;"><select id="pProvider"></select><div class="route-sep">/</div><select id="pModel"></select></div>
           </div>
-          <div id="runtimeInfo" style="margin-top:12px; font-size:12px; color:var(--claude-muted); line-height:1.6; background:#fafaf9; border:1px solid #ecebe6; border-radius:10px; padding:10px 12px; white-space:pre-line;">等待同步...</div>
+          <div class="field-row">
+            <span class="field-label" style="align-self:center;">备份顺位 1</span>
+            <div class="route-inputs" style="flex:1;min-width:0;"><select id="f1Provider"></select><div class="route-sep">/</div><select id="f1Model"></select></div>
+          </div>
+          <div class="field-row field-row--pre-panel">
+            <span class="field-label" style="align-self:center;">备份顺位 2</span>
+            <div class="route-inputs" style="flex:1;min-width:0;"><select id="f2Provider"></select><div class="route-sep">/</div><select id="f2Model"></select></div>
+          </div>
         </div>
       </div>
-      <div class="actions">
-        <button class="primary" id="saveBtn" onclick="saveSelection()" title="写入 agents.defaults.model（全局主模型+备份顺位）、提权与推理展示，并重启网关。已各渠道自选模型的会话不会被此项覆盖。">应用并重启</button>
-        <button class="ghost" id="restartBtn" onclick="restartService()">仅重启网关</button>
-      </div>
     </div>
-    <div id="tab-library" class="tab-content"><div id="providerSections"></div></div>
+    <div id="tab-library" class="tab-content"><div id="providerSections" class="library-root"></div></div>
     <div id="tab-add" class="tab-content">
       <div class="route-card">
         <div class="route-title" id="addTabTitle">接入新供应商</div>
-        <div style="display:grid; gap:10px;">
+        <div class="form-stack">
           <div class="form-group">
             <label>复用已有供应商</label>
-            <select id="reuseProviderSelect" style="width:100%; height:44px; font-size:15px!important; padding:10px 14px;" title="选中后自动填入名称、地址、认证与接口类型；密钥请按需填写；只需再填下方模型 ID / 显示名" onchange="applyReuseProvider()">
+            <select id="reuseProviderSelect" class="select-tall" title="选中后自动填入名称、地址、认证与接口类型；密钥请按需填写；只需再填下方模型 ID / 显示名" onchange="applyReuseProvider()">
               <option value="">（选一项以复用，无需重复填供应商信息）</option>
             </select>
-            <small style="display:block; margin-top:6px; font-size:11px; color:var(--claude-muted); line-height:1.45;">同一供应商加新型号时：先在此选择供应商，再只填「模型 ID」「显示名」即可点保存。</small>
+            <span class="hint">同一供应商加新型号时：先在此选择供应商，再只填「模型 ID」「显示名」即可点保存。</span>
           </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <div class="form-group"><label title="保存时会自动转为小写，与 openclaw.json / 会话一致">名称（小写）</label><input id="provider" placeholder="仅小写，如 vx001"></div>
-            <div class="form-group"><label>地址</label><input id="baseUrl" oninput="autoDetectApiType(this.value)"></div>
+          <div class="form-grid-2">
+            <div class="form-group"><label title="保存时会自动转为小写，与 openclaw.json / 会话一致">名称（小写）</label><input id="provider" class="input-tall" placeholder="仅小写，如 vx001"></div>
+            <div class="form-group"><label>地址</label><input id="baseUrl" class="input-tall" oninput="autoDetectApiType(this.value)"></div>
           </div>
-          <div class="form-group"><label>密钥</label><input id="apiKey" type="password" placeholder="留空则不更新"></div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <div class="form-group"><label>模型 ID</label><input id="modelId"></div>
-            <div class="form-group"><label>显示名</label><input id="modelName"></div>
+          <div class="form-group"><label>密钥</label><input id="apiKey" class="input-tall" type="password" placeholder="留空则不更新"></div>
+          <div class="form-grid-2">
+            <div class="form-group"><label>模型 ID</label><input id="modelId" class="input-tall"></div>
+            <div class="form-group"><label>显示名</label><input id="modelName" class="input-tall"></div>
           </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <div class="form-group"><label>认证</label><select id="auth"><option value="api-key">api-key</option><option value="">None</option></select></div>
-            <div class="form-group"><label>接口类型</label><select id="api">
+          <div class="form-grid-2">
+            <div class="form-group"><label>认证</label><select id="auth" class="select-tall"><option value="api-key">api-key</option><option value="">None</option></select></div>
+            <div class="form-group"><label title="写入 models.providers.*.models[].api，不会改同供应商下其它模型">接口类型（仅当前模型）</label><select id="api" class="select-tall">
               <option value="openai-completions">openai-completions</option>
               <option value="openai-responses">openai-responses</option>
               <option value="openai-codex-responses">openai-codex-responses</option>
               <option value="anthropic-messages">anthropic-messages</option>
               <option value="google-generative-ai">google-generative-ai</option>
-            </select><small id="apiDetectHint" style="display:none; color:var(--claude-accent); font-size:10px; font-weight:700;">✨ 已智能匹配协议类型</small></div>
+            </select><span class="hint-tight">保存时只更新本条模型；同供应商多协议时请逐个点「配置」核对。</span><span id="apiDetectHint" class="hint-accent">✨ 已智能匹配协议类型</span></div>
           </div>
-          <div class="form-group"><label>模型思考</label><select id="thinkingEnabled" style="width:100%; height:44px; font-size:16px!important; padding:10px 14px;">
+          <div class="form-group"><label>模型思考</label><select id="thinkingEnabled" class="select-tall">
               <option value="off">关闭</option>
               <option value="on">开启</option>
             </select></div>
           <div class="form-group" id="thinkingParamsRow" style="display:none;">
             <label>思考参数（写入 params.thinking）</label>
-            <input id="thinkingValue" placeholder="如 low、high；留空保存时按 low" style="width:100%; height:44px; font-size:16px!important; padding:10px 14px;">
+            <input id="thinkingValue" class="input-tall" placeholder="如 low、high；留空保存时按 low">
           </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <div class="form-group"><label>上下文窗口</label><input id="contextWindow" type="number" value="200000"></div>
-            <div class="form-group"><label>最大输出</label><select id="maxTokens">
+          <div class="form-grid-2">
+            <div class="form-group"><label>上下文窗口</label><input id="contextWindow" class="input-tall" type="number" value="200000"></div>
+            <div class="form-group"><label>最大输出</label><select id="maxTokens" class="select-tall">
               <option value="8192">8K</option>
               <option value="16384">16K</option>
               <option value="32768" selected>32K</option>
@@ -195,18 +1485,126 @@
             </select></div>
           </div>
           <button class="primary" id="addBtn" onclick="addModel()">保存并同步部署</button>
-          <button class="ghost" id="cancelEditBtn" style="display:none; margin-top:8px;" onclick="cancelEdit()">取消编辑</button>
+          <button class="ghost btn-cancel-edit" id="cancelEditBtn" style="display:none;" onclick="cancelEdit()">取消编辑</button>
+        </div>
+      </div>
+    </div>
+    <details class="collapsible page-meta-bottom home-usage-details" id="homeUsageCard">
+      <summary>使用情况</summary>
+      <div class="collapsible-content">
+        <p class="hint-tight" style="margin-top:0;margin-bottom:12px;">用量展示（与 ClawPanel 一致布局）。</p>
+        <div id="homeUsageBody" class="usage-root"></div>
+      </div>
+    </details>
+    <details class="collapsible page-meta-bottom backup-panel-details" id="backupPanelDetails">
+      <summary>备份与恢复</summary>
+      <div class="collapsible-content">
+        <p class="hint-tight" style="margin-top:0;margin-bottom:0;">后台每 <span id="backupIntervalHint">—</span> 分钟自动备份；仅保留约 <span id="backupRetentionHint">7</span> 天内的快照。「恢复」会先自动备份当前文件再覆盖。</p>
+        <div class="backup-toolbar">
+          <button type="button" class="ghost" id="backupNowBtn">立即备份</button>
+          <button type="button" class="ghost" id="backupRestoreOpenBtn" aria-expanded="false">从备份恢复</button>
+        </div>
+        <div class="backup-restore-panel" id="backupRestorePanel" aria-hidden="true">
+          <p class="hint-tight" style="margin:0;">选中快照后点「恢复选中」。将覆盖当前 <code>openclaw.json</code>（及备份里有的 <code>sessions.json</code>）；会先自动再备份一版现状。</p>
+          <label class="backup-restore-label">
+            <span class="hint-tight" style="font-weight:700;">选择快照</span>
+            <select id="restoreBackupSelect" class="backup-restore-select"></select>
+          </label>
+          <div class="backup-restore-actions">
+            <button type="button" class="primary" id="restoreBackupConfirmBtn">恢复选中</button>
+          </div>
+        </div>
+        <p class="backup-path-hint" id="backupPathHint"></p>
+      </div>
+    </details>
+    <details class="collapsible page-meta-bottom" id="gatewayLogDetails">
+      <summary>网关日志</summary>
+      <div class="collapsible-content">
+        <p class="gateway-log-meta" id="gatewayLogMeta">展开后自动拉取近期日志；无 journalctl 权限时可配置环境变量 OPENCLAW_GATEWAY_LOG_FILE 指向日志文件。</p>
+        <div class="gateway-log-toolbar">
+          <label class="hint-tight" style="margin:0;display:flex;align-items:center;gap:8px;">
+            行数
+            <select id="gatewayLogLines" title="每次拉取的行数">
+              <option value="100">100</option>
+              <option value="200" selected>200</option>
+              <option value="400">400</option>
+              <option value="800">800</option>
+            </select>
+          </label>
+          <button type="button" class="ghost" id="gatewayLogRefreshBtn">刷新</button>
+        </div>
+        <pre class="gateway-log-pre" id="gatewayLogBody" aria-live="polite">（尚未加载）</pre>
+      </div>
+    </details>
+    <details class="collapsible page-meta-bottom" id="localMachineInfoDetails">
+      <summary>本机信息</summary>
+      <div class="collapsible-content" id="pageMetaBody"><p class="hint-tight">载入后显示管理端版本与路径</p></div>
+    </details>
+  </div>
+  <div id="toastMini" role="status" aria-live="polite"></div>
+  <div class="dock">
+    <div class="diag-info">
+      <div class="probe-summary-row">
+        <div id="probeSummary" class="status-msg">等待诊断扫描…</div>
+        <button type="button" class="probe-detail-link" id="probeDetailOpenBtn" disabled onclick="openProbeDetailModal()">查看明细</button>
+      </div>
+      <div id="probeAbnormal" class="probe-abnormal"></div>
+    </div>
+    <button class="primary btn-dock-probe" id="probeBtn" onclick="runProbe()">一键诊断</button>
+  </div>
+  <div id="probeDetailModal" class="probe-modal-overlay" aria-hidden="true" onclick="if(event.target===this)closeProbeDetailModal()">
+    <div class="probe-modal" role="dialog" aria-modal="true" aria-labelledby="probeModalTitle" onclick="event.stopPropagation()">
+      <div class="probe-modal-head">
+        <h2 id="probeModalTitle">诊断明细</h2>
+        <button type="button" class="probe-modal-close" onclick="closeProbeDetailModal()">关闭</button>
+      </div>
+      <div class="probe-modal-body" id="probeModalBody"></div>
+    </div>
+  </div>
+  <div id="fetchModelsModal" class="probe-modal-overlay" aria-hidden="true" onclick="if(event.target===this)closeFetchModelsPickerModal()">
+    <div class="probe-modal fetch-models-modal" role="dialog" aria-modal="true" aria-labelledby="fetchModelsModalTitle" onclick="event.stopPropagation()">
+      <div class="probe-modal-head">
+        <h2 id="fetchModelsModalTitle">选择模型</h2>
+        <button type="button" class="probe-modal-close" onclick="closeFetchModelsPickerModal()">关闭</button>
+      </div>
+      <div class="probe-modal-body" style="display:flex;flex-direction:column;max-height:min(78vh,720px);">
+        <p class="fetch-models-hint" id="fetchModelsHint"></p>
+        <div class="fetch-models-toolbar">
+          <input type="search" class="fetch-models-filter" id="fetchModelsFilter" placeholder="筛选模型 id…" autocomplete="off" />
+          <div class="fetch-models-bulk">
+            <button type="button" class="ghost" onclick="fetchModelsPickerSelectAll(true)">全选可见</button>
+            <button type="button" class="ghost" onclick="fetchModelsPickerSelectAll(false)">全不选</button>
+          </div>
+        </div>
+        <div class="fetch-models-scroll" id="fetchModelsList"></div>
+        <div class="fetch-models-foot">
+          <button type="button" class="ghost" onclick="closeFetchModelsPickerModal()">取消</button>
+          <button type="button" class="primary" id="fetchModelsApplyBtn" onclick="fetchModelsPickerApply()">应用同步</button>
         </div>
       </div>
     </div>
   </div>
-  <div class="dock">
-    <div class="diag-info"><div id="probeSummary" class="status-msg">等待诊断扫描...</div><div id="probeAbnormal" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;"></div></div>
-    <button class="primary" id="probeBtn" style="height:38px; padding:0 16px; font-size:13px; border-radius:10px; width:auto;" onclick="runProbe()">一键诊断</button>
-  </div>
   <script>
     let state = null;
-    function switchTab(t) { document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active')); const target = typeof t === 'string' ? document.getElementById(t) : t; const btn = document.querySelector(`[onclick*="${target.id}"]`); if(btn) btn.classList.add('active'); target.classList.add('active'); }
+    let lastProbeReport = null;
+    /** OpenClaw 版本：后台与「本机信息」展开时检查；默认 12h 与 server 缓存对齐 */
+    const OCMA_OPENCLAW_POLL_MS = 12 * 3600 * 1000;
+    let ocmaOpenclawPollTimer = null;
+    /** 远端模型弹窗：须与勾选结果一并提交 remoteIds 作为「可移除」作用域 */
+    let fetchModelsModalCtx = null;
+    const MODEL_TEST_STORAGE_KEY = 'openclaw-model-admin-model-test-v1';
+    /** 用 data-tab 定位，避免 [onclick*="tab-xxx"] 误匹配模型库里 onclick 路径子串导致标签失灵 */
+    function switchTab(t) {
+      const id = typeof t === 'string' ? t : (t && t.id);
+      if (!id) return;
+      const panel = document.getElementById(id);
+      if (!panel) return;
+      document.querySelectorAll('.tab-nav .tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
+      const btn = document.querySelector('.tab-nav .tab-btn[data-tab="' + id.replace(/"/g, '') + '"]');
+      if (btn) btn.classList.add('active');
+      panel.classList.add('active');
+    }
     function thinkingTierOf(m) {
       if (!m) return 'off';
       const t = m.thinking;
@@ -219,6 +1617,18 @@
     function escAttr(s) {
       return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     }
+    function effectiveSessionReasoning(ac) {
+      if (!state) return 'off';
+      if (ac && ac.sessionReasoningLevel != null) return ac.sessionReasoningLevel;
+      return state.reasoningDisplay === 'on' || state.reasoningDisplay === 'off' ? state.reasoningDisplay : 'off';
+    }
+    function effectiveSessionElevated(ac) {
+      if (!state) return 'off';
+      if (ac && ac.sessionElevatedLevel != null) return ac.sessionElevatedLevel;
+      return state.elevatedDefault === 'full' || state.elevatedDefault === 'off' ? state.elevatedDefault : 'off';
+    }
+    function reasoningLabel(v) { return v === 'on' ? '推理开' : '推理关'; }
+    function elevatedLabel(v) { return v === 'full' ? '提权开' : '提权关'; }
     const MAX_TOKENS_CHOICES = [8192, 16384, 32768, 65536, 131072];
     function snapMaxTokensToChoice(n) {
       const v = parseInt(n, 10);
@@ -246,13 +1656,195 @@
       const models = actP ? ((groups.find(g => g.provider === actP) || {}).models || []) : [];
       ms.innerHTML = (prefix!=='p'?'<option value="">(无)</option>':'') + models.map(m => `<option value="${m.ref}" ${m.ref===ref?'selected':''}>${m.name || m.id}</option>`).join('');
     }
+    /** 运行状态：各渠道会话的 modelOverride 下拉（与路由卡片同一套 groupedModels） */
+    function populateSessionRow(row, ref) {
+      const ps = row.querySelector('.sessProv');
+      const ms = row.querySelector('.sessMod');
+      if (!ps || !ms) return;
+      const groups = groupedModels();
+      if (!groups.length) {
+        ps.innerHTML = '';
+        ms.innerHTML = '';
+        return;
+      }
+      const r0 = (ref && ref !== '—' && String(ref).trim()) ? String(ref).trim() : (state.primary || '');
+      let currP = r0.includes('/') ? r0.split('/')[0] : '';
+      if (!currP || !groups.some((g) => g.provider === currP)) {
+        currP = state.primary && state.primary.includes('/') ? state.primary.split('/')[0] : groups[0].provider;
+      }
+      ps.innerHTML = groups.map((g) => `<option value="${escAttr(g.provider)}">${g.provider}</option>`).join('');
+      ps.value = groups.some((x) => x.provider === currP) ? currP : groups[0].provider;
+      const actP = ps.value;
+      const models = ((groups.find((g) => g.provider === actP) || {}).models) || [];
+      const selRef = r0.includes('/') ? r0 : (state.primary || '');
+      if (!models.length) {
+        ms.innerHTML = '';
+        return;
+      }
+      ms.innerHTML = models.map((m) => `<option value="${escAttr(m.ref)}">${m.name || m.id}</option>`).join('');
+      if (selRef && models.some((m) => m.ref === selRef)) ms.value = selRef;
+      else ms.value = models[0].ref;
+    }
+    function wireSessionRowProviderChange(row) {
+      const ps = row.querySelector('.sessProv');
+      const ms = row.querySelector('.sessMod');
+      if (!ps || !ms) return;
+      if (ps.dataset.sessProvBound === '1') return;
+      ps.dataset.sessProvBound = '1';
+      ps.addEventListener('change', () => {
+        const actP = ps.value;
+        const models = actP ? ((groupedModels().find((g) => g.provider === actP) || {}).models || []) : [];
+        const prev = ms.value;
+        ms.innerHTML = models.map((m) => `<option value="${escAttr(m.ref)}">${m.name || m.id}</option>`).join('');
+        if (prev && models.some((m) => m.ref === prev)) ms.value = prev;
+        else if (models[0]) ms.value = models[0].ref;
+      });
+    }
+    function refreshSessionModelRows() {
+      const rt = document.getElementById('runtimeInfo');
+      if (!rt || !state) return;
+      const previews = (state.sessionPreviews && state.sessionPreviews.length)
+        ? state.sessionPreviews
+        : (state.activeChatSession && state.activeChatSession.sessionKey
+            ? [{ ...state.activeChatSession, previewTitle: state.activeChatSession.previewTitle || '当前预览' }]
+            : []);
+      const byKey = {};
+      previews.forEach((p) => { if (p && p.sessionKey) byKey[p.sessionKey] = p; });
+      rt.querySelectorAll('.runtime-session-wrap[data-session-key]').forEach((row) => {
+        const sk = row.getAttribute('data-session-key');
+        const ac = byKey[sk];
+        const ref = ac && ac.modelRef ? ac.modelRef : (state.primary || '');
+        populateSessionRow(row, ref);
+        wireSessionRowProviderChange(row);
+      });
+      refreshSessionBehaviorRows();
+    }
+    function refreshSessionBehaviorRows() {
+      const rt = document.getElementById('runtimeInfo');
+      if (!rt || !state) return;
+      const previews = (state.sessionPreviews && state.sessionPreviews.length)
+        ? state.sessionPreviews
+        : (state.activeChatSession && state.activeChatSession.sessionKey
+            ? [{ ...state.activeChatSession, previewTitle: state.activeChatSession.previewTitle || '当前预览' }]
+            : []);
+      const byKey = {};
+      previews.forEach((p) => { if (p && p.sessionKey) byKey[p.sessionKey] = p; });
+      rt.querySelectorAll('.runtime-session-wrap[data-session-key]').forEach((wrap) => {
+        const sk = wrap.getAttribute('data-session-key');
+        const ac = byKey[sk];
+        const sr = wrap.querySelector('.sessReason');
+        const se = wrap.querySelector('.sessElev');
+        if (sr) sr.value = ac && ac.sessionReasoningLevel != null ? ac.sessionReasoningLevel : 'inherit';
+        if (se) se.value = ac && ac.sessionElevatedLevel != null ? ac.sessionElevatedLevel : 'inherit';
+      });
+    }
+    /** 与会话行下拉一致的全局路由 POST body */
+    function buildSelectionPayload() {
+      const p = document.getElementById('pModel').value;
+      const f = [document.getElementById('f1Model').value, document.getElementById('f2Model').value].filter((v) => v && v !== p);
+      const e = document.getElementById('elevatedDefault').value;
+      const rd = document.getElementById('reasoningDisplay').value;
+      return { primary: p, fallbacks: f, elevatedDefault: e, reasoningDisplay: rd, applyToSessions: true, clearModelOverrides: false };
+    }
+    function normModelRefKey(r) {
+      return String(r || '').trim().toLowerCase();
+    }
+    /** 按当前界面把运行状态里各会话写入 sessions.json（须串行，避免并发覆盖） */
+    async function pushAllSessionRowsFromUi() {
+      const rt = document.getElementById('runtimeInfo');
+      if (!rt) return;
+      const prim = normModelRefKey(document.getElementById('pModel').value);
+      const wraps = rt.querySelectorAll('.runtime-session-wrap[data-session-key]');
+      for (let i = 0; i < wraps.length; i++) {
+        const wrap = wraps[i];
+        const sk = wrap.getAttribute('data-session-key');
+        const ms = wrap.querySelector('.sessMod');
+        const ref = ms && ms.value ? ms.value.trim() : '';
+        if (!ref || ref.indexOf('/') === -1) continue;
+        const sr = wrap.querySelector('.sessReason');
+        const se = wrap.querySelector('.sessElev');
+        const reasoningLevel = sr && sr.value === 'inherit' ? null : sr && sr.value;
+        const elevatedLevel = se && se.value === 'inherit' ? null : se && se.value;
+        const followModel = normModelRefKey(ref) === prim;
+        if (followModel && reasoningLevel == null && elevatedLevel == null) {
+          await apiReq('/api/session/model-override', { sessionKey: sk, clear: true });
+          await apiReq('/api/session/behavior', { sessionKey: sk, reasoningLevel: null, elevatedLevel: null });
+        } else if (followModel) {
+          await apiReq('/api/session/model-override', { sessionKey: sk, clear: true });
+          await apiReq('/api/session/behavior', { sessionKey: sk, reasoningLevel, elevatedLevel });
+        } else {
+          await apiReq('/api/session/model-override', { sessionKey: sk, modelRef: ref });
+          await apiReq('/api/session/behavior', { sessionKey: sk, reasoningLevel, elevatedLevel });
+        }
+      }
+    }
+    /** 顶栏「应用」与会话按钮共用：写 openclaw 全局 → 各会话按界面写入 → 重启网关 → 刷新 */
+    async function applyFullDeploy() {
+      await apiReq('/api/selection', buildSelectionPayload());
+      await pushAllSessionRowsFromUi();
+      await apiReq('/api/restart', {});
+      await refresh();
+    }
+    /** 写入会话 = 仅按界面完整下发（含全局+全会话+重启）；跟随全局 = 先清本条覆盖再同一套完整下发 */
+    function bindRuntimeSessionModelOverride() {
+      const rt = document.getElementById('runtimeInfo');
+      if (!rt || rt.dataset.sessionModelBound === '1') return;
+      rt.dataset.sessionModelBound = '1';
+      rt.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action="session-write"], [data-action="session-follow-global"]');
+        if (!btn || !rt.contains(btn)) return;
+        const wrap = btn.closest('.runtime-session-wrap[data-session-key]');
+        if (!wrap) return;
+        const sk = wrap.getAttribute('data-session-key');
+        if (!sk) return;
+        const pair = wrap.querySelectorAll('[data-action="session-write"], [data-action="session-follow-global"]');
+        const followG = btn.dataset.action === 'session-follow-global';
+        const orig = btn.innerHTML;
+        const headerIds = ['syncBtn', 'saveBtn', 'restartBtn'];
+        const prevHeaderDis = {};
+        pair.forEach((b) => { b.disabled = true; });
+        btn.innerHTML = '…';
+        headerIds.forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) {
+            prevHeaderDis[id] = el.disabled;
+            el.disabled = true;
+          }
+        });
+        try {
+          if (!followG) {
+            const ms = wrap.querySelector('.sessMod');
+            const ref = ms && ms.value ? ms.value.trim() : '';
+            if (!ref || ref.indexOf('/') === -1) {
+              alert('请选择完整的 供应商/模型');
+              return;
+            }
+          }
+          if (followG) {
+            await apiReq('/api/session/model-override', { sessionKey: sk, clear: true });
+            await apiReq('/api/session/behavior', { sessionKey: sk, reasoningLevel: null, elevatedLevel: null });
+            await refresh();
+          }
+          await applyFullDeploy();
+        } catch (err) {
+          alert(err && err.message ? err.message : '操作失败');
+          await refresh();
+        } finally {
+          headerIds.forEach((id) => {
+            const el = document.getElementById(id);
+            if (el && Object.prototype.hasOwnProperty.call(prevHeaderDis, id)) el.disabled = prevHeaderDis[id];
+          });
+          pair.forEach((b) => { b.disabled = false; });
+          btn.innerHTML = orig;
+        }
+      });
+    }
     function initListeners(prefix) {
       document.getElementById(prefix + 'Provider').addEventListener('change', (e) => {
         const actP = e.target.value;
         const ms = document.getElementById(prefix + 'Model');
         const models = actP ? (groupedModels().find(g => g.provider === actP) || {}).models || [] : [];
         ms.innerHTML = (prefix !== 'p' ? '<option value="">(无)</option>' : '') + models.map(m => `<option value="${m.ref}">${m.name || m.id}</option>`).join('');
-        if (prefix === 'p') syncPrimaryThinkingFromSelection();
       });
     }
     async function apiReq(p, b) {
@@ -276,22 +1868,6 @@
       document.getElementById('thinkingParamsRow').style.display = on ? 'block' : 'none';
     }
 
-    function syncPrimaryThinkingRow() {
-      const on = document.getElementById('pThinkingEnabled').value === 'on';
-      document.getElementById('pThinkingParamsRow').style.display = on ? 'block' : 'none';
-    }
-
-    /** 按当前选中的主模型 ref 从 state.models 回填思考控件 */
-    function syncPrimaryThinkingFromSelection() {
-      const ref = document.getElementById('pModel').value;
-      const m = (state?.models || []).find(x => x.ref === ref);
-      const mt = m ? thinkingTierOf(m) : 'off';
-      const off = !mt || mt === 'off';
-      document.getElementById('pThinkingEnabled').value = off ? 'off' : 'on';
-      document.getElementById('pThinkingValue').value = off ? 'low' : mt;
-      syncPrimaryThinkingRow();
-    }
-
     function autoDetectApiType(url) {
       const apiSelect = document.getElementById('api');
       const hint = document.getElementById('apiDetectHint');
@@ -309,7 +1885,7 @@
       if (!btn) return;
       const old = btn.innerHTML;
       if (outcome.error) {
-        btn.innerHTML = '<span style="font-size:18px;line-height:1;font-weight:700">✗</span>';
+        btn.innerHTML = '<span class="btn-flash-x">✗</span>';
         btn.classList.add('btn-error');
         setTimeout(() => { btn.innerHTML = old; btn.classList.remove('btn-error'); }, 2200);
       } else {
@@ -319,7 +1895,7 @@
       }
     }
 
-    /** outcome: { success: '短文案' } | { error: true } | 省略则仅恢复按钮 */
+    /** outcome: { success: true } 仅 ✓ | { success: '短文案' } 为 ✓+文案 | { error: true } | 省略则仅恢复按钮 */
     function setLoading(id, isLoading, outcome) {
       const btn = document.getElementById(id); if(!btn) return;
       if (isLoading) {
@@ -329,15 +1905,15 @@
         btn.classList.remove('success', 'btn-error');
       } else {
         if (outcome && outcome.error) {
-          btn.innerHTML = '<span style="font-size:18px;line-height:1;font-weight:700">✗</span>';
+          btn.innerHTML = '<span class="btn-flash-x">✗</span>';
           btn.classList.add('btn-error');
           setTimeout(() => {
             btn.innerHTML = btn.dataset.oldText;
             btn.disabled = false;
             btn.classList.remove('btn-error');
           }, 2200);
-        } else if (outcome && outcome.success) {
-          btn.innerHTML = '✓ ' + outcome.success;
+        } else if (outcome && !outcome.error && (outcome.success === true || (typeof outcome.success === 'string' && outcome.success.length > 0))) {
+          btn.innerHTML = outcome.success === true ? '✓' : ('✓ ' + outcome.success);
           btn.classList.add('success');
           setTimeout(() => {
             btn.innerHTML = btn.dataset.oldText;
@@ -367,71 +1943,339 @@
           alertBar.onclick = restartService;
         }
       } else { alertBar.style.display = 'none'; alertBar.onclick = restartService; }
-      const cph = document.getElementById('configPathHint');
-      if (cph && state.configPath) cph.textContent = state.configPath;
-      document.getElementById('statPrimary').textContent = (state.primary && state.primary.includes('/')) ? state.primary.split('/')[1] : (state.primary || '无');
-      document.getElementById('statFallbacks').textContent = (state.fallbacks || []).length;
       document.getElementById('statProviders').textContent = (state.providers || []).length;
+      document.getElementById('statModelsTotal').textContent = (state.models || []).length;
+      const pmb = document.getElementById('pageMetaBody');
+      if (pmb) {
+        const pm = state.panelMeta || {};
+        const ocCli = pm.openclawCliVersion != null && String(pm.openclawCliVersion) !== '' ? String(pm.openclawCliVersion) : '—';
+        pmb.innerHTML =
+          '<p class="runtime-line runtime-line--detail">管理端版本</p>' +
+          '<p class="overview-path">' + escHtml(pm.version != null && String(pm.version) !== '' ? String(pm.version) : '—') + '</p>' +
+          '<p class="runtime-line runtime-line--detail" style="margin-top:10px">OpenClaw CLI（本机）</p>' +
+          '<p class="overview-path" id="openclawCliVersionLine">' + escHtml(ocCli) + '</p>' +
+          '<p class="runtime-line runtime-line--detail" style="margin-top:10px">OpenClaw 更新</p>' +
+          '<p class="overview-path" id="openclawLatestLine">检查中…</p>' +
+          '<p class="hint-tight" id="openclawVersionStatusLine" style="margin-top:6px"></p>' +
+          '<p class="hint-tight" id="openclawCheckedAtLine" style="margin-top:4px;color:var(--claude-muted)"></p>' +
+          '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+          '<button type="button" class="primary" id="openclawUpdateBtn" style="display:none">更新 OpenClaw</button>' +
+          '<button type="button" class="ghost" id="openclawRecheckBtn" style="display:none">重新检查版本</button></div>' +
+          '<p class="runtime-line runtime-line--detail" style="margin-top:14px">openclaw.json</p>' +
+          '<p class="overview-path">' + escHtml(state.configPath || '—') + '</p>' +
+          '<p class="runtime-line runtime-line--detail" style="margin-top:10px">sessions.json</p>' +
+          '<p class="overview-path">' + escHtml(pm.sessionsPath != null && String(pm.sessionsPath) !== '' ? String(pm.sessionsPath) : '—') + '</p>';
+        fetchOpenclawVersionCheck(false);
+      }
       if(state.reasoningDisplay === 'on' || state.reasoningDisplay === 'off') document.getElementById('reasoningDisplay').value = state.reasoningDisplay;
       if(state.elevatedDefault) document.getElementById('elevatedDefault').value = state.elevatedDefault;
-      const runtimeRows = [];
-      runtimeRows.push((state.gatewayActive ? '网关状态: 运行中' : '网关状态: 离线') + ' | ' + (state.configValid ? '配置校验: 通过' : '配置校验: 失败'));
-      const mr = state.mainSessionRoute;
-      if (mr && mr.hasOverride && !mr.matchesPrimary) {
-        runtimeRows.push(
-          'ℹ 网页主会话使用独立模型：当前 ' + (mr.effectiveRef || '—') + '，路由默认 ' + (mr.primary || '—') +
-            '（模型可独立；思考随该 ref 的 params.thinking；提权/推理展示等与电报私聊对齐）。'
-        );
-      }
       const previews = (state.sessionPreviews && state.sessionPreviews.length)
         ? state.sessionPreviews
-        : (state.activeChatSession && state.activeChatSession.modelRef
+        : (state.activeChatSession && state.activeChatSession.sessionKey
             ? [{ previewTitle: '当前预览', ...state.activeChatSession }]
             : []);
+      let runtimeHtml = '<div class="runtime-stack">';
+      runtimeHtml += '<div class="runtime-line">' + escHtml(state.gatewayActive ? '网关: 运行中' : '网关: 离线') + '</div>';
       if (previews.length) {
         previews.forEach((ac) => {
           const st = (ac.statusThink != null && ac.statusThink !== '') ? String(ac.statusThink) : 'off';
-          const src = ac.statusThinkSource === 'session'
-            ? 'sessions.json · thinkingLevel（覆盖配置）'
-            : 'openclaw.json · agents.defaults.models[' + ac.modelRef + '].params.thinking';
-          const cfgT = (ac.configThinking != null && ac.configThinking !== '') ? String(ac.configThinking) : 'off';
-          runtimeRows.push(
-            '【' + (ac.previewTitle || '预览') + '】' +
-              '\n键: ' + (ac.sessionKey || '—') + ' · ' + (ac.sessionLabel || '') +
-              '\n模型 ref: ' + ac.modelRef + (ac.viaOverride ? '（会话 modelOverride）' : '') +
-              '\n/status Think: ' + st + ' · 来源: ' + src +
-              (ac.statusThinkSource === 'session' ? '\n（配置档应为: ' + cfgT + '）' : '')
-          );
+          const effR = effectiveSessionReasoning(ac);
+          const effE = effectiveSessionElevated(ac);
+          const lineModel = '模型 ' + (ac.modelRef || '—') + (ac.viaOverride ? '（会话内模型）' : '');
+          const lineRest = '思考 ' + st + ' · ' + reasoningLabel(effR) + ' · ' + elevatedLabel(effE);
+          runtimeHtml += '<div class="runtime-preview-block">';
+          runtimeHtml += '<div class="runtime-line">' + escHtml('【' + (ac.previewTitle || '会话') + '】') + '</div>';
+          runtimeHtml += '<div class="runtime-preview-summary">';
+          runtimeHtml += '<div class="runtime-line runtime-line--detail">' + escHtml(lineModel) + '</div>';
+          runtimeHtml += '<div class="runtime-line runtime-line--detail">' + escHtml(lineRest) + '</div>';
+          runtimeHtml += '</div>';
+          if (ac.sessionKey) {
+            runtimeHtml += '<div class="runtime-session-wrap" data-session-key="' + escAttr(ac.sessionKey) + '">';
+            runtimeHtml += '<div class="runtime-session-editor">';
+            runtimeHtml += '<div class="runtime-sess-section">';
+            runtimeHtml += '<div class="runtime-sess-section-title">模型路由</div>';
+            runtimeHtml += '<div class="route-inputs runtime-sess-selects"><select class="sessProv compact-select"></select><div class="route-sep">/</div><select class="sessMod compact-select"></select></div>';
+            runtimeHtml += '</div>';
+            runtimeHtml += '<div class="runtime-sess-section">';
+            runtimeHtml += '<div class="runtime-sess-section-title">本会话选项</div>';
+            runtimeHtml += '<div class="runtime-sess-fields-grid">';
+            runtimeHtml += '<div class="runtime-sess-field"><span class="runtime-sess-field-label">推理展示</span>';
+            runtimeHtml += '<select class="sessReason compact-select" title="与顶栏「应用」相同：完整下发全局+各会话+重启">';
+            runtimeHtml += '<option value="inherit">跟随全局</option><option value="on">开启</option><option value="off">关闭</option></select></div>';
+            runtimeHtml += '<div class="runtime-sess-field"><span class="runtime-sess-field-label">提权</span>';
+            runtimeHtml += '<select class="sessElev compact-select" title="与顶栏「应用」相同：完整下发全局+各会话+重启">';
+            runtimeHtml += '<option value="inherit">跟随全局</option><option value="off">关闭</option><option value="full">开启</option></select></div>';
+            runtimeHtml += '</div></div>';
+            runtimeHtml += '<div class="runtime-sess-actions">';
+            runtimeHtml += '<button type="button" class="ghost runtime-sess-btn" data-action="session-write" title="按当前界面：写全局路由与选项，并同步所有会话行，最后重启网关">写入会话</button>';
+            runtimeHtml += '<button type="button" class="ghost runtime-sess-btn" data-action="session-follow-global" title="先清空本条模型/推理/提权覆盖，再执行与「应用」相同的完整下发与重启">跟随全局</button>';
+            runtimeHtml += '</div></div></div>';
+          }
+          runtimeHtml += '</div>';
         });
-        if (previews.length > 1) {
-          const ts = previews.map((p) => String(p.statusThink != null ? p.statusThink : 'off'));
-          const refs = previews.map((p) => String(p.modelRef || ''));
-          const tOk = ts.every((t) => t === ts[0]);
-          const rOk = refs.every((r) => r === refs[0]);
-          runtimeRows.push(
-            (tOk && rOk)
-              ? '✓ 以上渠道模型 ref 与 /status Think 一致'
-              : '⚠ 以上渠道不一致：请对照各键的 modelOverride 与 thinkingLevel（保存「接入配置」可清 thinkingLevel）'
-          );
-        }
       } else {
-        runtimeRows.push('会话预览: — · 默认模型 ' + (state.primary || '—'));
+        runtimeHtml += '<div class="runtime-preview-block">';
+        runtimeHtml += '<div class="runtime-line">' + escHtml('会话: —') + '</div>';
+        runtimeHtml += '<div class="runtime-line runtime-line--detail">' + escHtml('路由默认 ' + (state.primary || '—')) + '</div>';
+        runtimeHtml += '</div>';
       }
-      (state.alignmentHints || []).forEach((h) => runtimeRows.push('ℹ ' + h));
-      if (!state.configValid && state.configIssues && state.configIssues.length > 0) runtimeRows.push('配置问题: ' + state.configIssues[0]);
-      document.getElementById('runtimeInfo').innerText = runtimeRows.join('\n');
+      runtimeHtml += '</div>';
+      document.getElementById('runtimeInfo').innerHTML = runtimeHtml;
+      refreshSessionModelRows();
       populate('p', state.primary); populate('f1', state.fallbacks[0]); populate('f2', state.fallbacks[1]);
-      syncPrimaryThinkingFromSelection();
       document.getElementById('providerSections').innerHTML = groupedModels().map(g => {
         const pData = state.providers.find(p => p.name === g.provider);
         const isOAuth = pData && pData.auth === 'oauth';
         const builtinProv = g.provider === 'openai-codex' || g.provider === 'github-copilot';
         const syntheticProv = pData && typeof pData.baseUrl === 'string' && /^\s*\(/.test(pData.baseUrl);
         const canDeleteWholeProvider = Boolean(pData) && !builtinProv && !syntheticProv;
-        const provBar = `<div style="margin-bottom:10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;"><button type="button" class="ghost" style="height:36px; padding:0 14px; font-size:13px;" onclick='reuseProviderFromLibrary(${JSON.stringify(g.provider)})'>复用此供应商再加模型</button>${canDeleteWholeProvider ? `<button type="button" class="ghost" style="height:36px; padding:0 14px; font-size:13px; color:var(--claude-danger); border-color:#feb2b2;" id="delProvBtn_${g.provider.replace(/\//g,'_').replace(/\./g,'_')}" onclick='deleteWholeProvider(${JSON.stringify(g.provider)})'>删除整个供应商（仅自定义接入）</button>` : ''}</div>`;
-        return `<details class="collapsible"><summary><span>${escHtml(g.provider)}</span><span style="font-weight:400; font-size:11px; color:var(--claude-muted)">${g.models.length} 模型</span></summary><div class="collapsible-content">${provBar}${g.models.map(m => `<div class="model-item"><div><strong>${escHtml(m.name || m.id)}<span class="think-suffix"> · 思考 ${escHtml(thinkingTierOf(m))}</span></strong>${m.ref===state.primary?'<span class="badge active">默认</span>':''}<br><small style="color:var(--claude-muted); font-size:12px;">${escHtml(m.ref)}</small></div><div style="display:flex; gap:8px;">${isOAuth ? '' : `<button class="ghost" style="height:36px; padding:0 12px; font-size:13px;" onclick="prefillModel('${m.ref}')">配置</button>`}<button class="ghost" style="height:36px; padding:0 12px; font-size:13px; color:var(--claude-danger)" id="delBtn_${m.ref.replace('/','_').replace('.','_')}" onclick="deleteModel('${m.ref}')">移除</button></div></div>`).join('')}</div></details>`;
-      }).join('') || '<p style="text-align:center; color:var(--claude-muted)">暂无配置</p>';
+        const canTtft = !isOAuth && !syntheticProv;
+        const canFetchModelList = canTtft && !builtinProv;
+        const batchBtn = canTtft
+          ? `<button type="button" class="ghost" data-action="batch-test-provider" data-provider="${escAttr(g.provider)}">一键测速</button>`
+          : '';
+        const fetchModelsBtn = canFetchModelList
+          ? `<button type="button" class="ghost prov-fetch-btn" data-action="fetch-provider-models" data-provider="${escAttr(g.provider)}" title="拉取远端列表，勾选同步；未在列表中的本地模型不受影响">获取模型列表</button>`
+          : '';
+        const reuseBtn = `<button type="button" class="ghost" onclick='reuseProviderFromLibrary(${JSON.stringify(g.provider)})'>复用</button>`;
+        const delProvBtn = canDeleteWholeProvider
+          ? `<button type="button" class="ghost btn-library-danger" id="delProvBtn_${g.provider.replace(/\//g,'_').replace(/\./g,'_')}" onclick='deleteWholeProvider(${JSON.stringify(g.provider)})'>删供应商</button>`
+          : '';
+        const toolbarCols = (canTtft ? 1 : 0) + 1 + (canDeleteWholeProvider ? 1 : 0);
+        const toolbarCls = 'library-toolbar library-toolbar--' + toolbarCols;
+        const provBar = `<div class="${toolbarCls}">${batchBtn}${reuseBtn}${delProvBtn}</div>`;
+        const metaBits = [`${g.models.length} 模型`];
+        if (pData && pData.api === 'per-model') metaBits.push('多协议');
+        const metaLine = metaBits.join(' · ');
+        /* 测速 badge 在操作行最左；三按钮成组在右侧；data-action 仍走事件委托 */
+        const mtbId = (r) => 'mtb_' + r.replace(/\//g, '_').replace(/\./g, '_').replace(/:/g, '_');
+        const modelsHtml = g.models.map((m) => {
+          const r = m.ref;
+          const testBadge = canTtft
+            ? `<span class="library-test-badge library-test-badge--muted" id="${mtbId(r)}" aria-live="polite">—</span>`
+            : '';
+          const btnThree = `<div class="library-model-actions-btns">${canTtft ? `<button type="button" class="ghost btn-model-test" data-action="test-model" data-ref="${escAttr(r)}">测速</button>` : ''}${isOAuth ? '' : `<button type="button" class="ghost" onclick="prefillModel('${r}')">配置</button>`}<button type="button" class="ghost btn-library-danger" id="delBtn_${r.replace('/','_').replace('.','_')}" onclick="deleteModel('${r}')">移除</button></div>`;
+          return `<div class="library-model-card"><div class="library-model-body"><div class="library-model-head"><strong>${escHtml(m.name || m.id)}</strong><span class="think-suffix">思考 ${escHtml(thinkingTierOf(m))}</span>${m.ref === state.primary ? '<span class="badge active">默认</span>' : ''}</div><div class="library-model-meta"><div class="library-meta-row"><span class="library-meta-label">路径</span><span class="library-meta-val library-meta-val--mono">${escHtml(m.ref)}</span></div><div class="library-meta-row"><span class="library-meta-label">接口</span><span class="library-meta-val"><code>${escHtml(m.api || '—')}</code></span></div></div></div><div class="library-model-actions">${testBadge}${btnThree}</div></div>`;
+        }).join('');
+        return `<details class="collapsible library-provider"><summary><div class="prov-summary-row"><div class="prov-head"><span class="prov-name">${escHtml(g.provider)}</span><span class="prov-meta">${escHtml(metaLine)}</span></div>${fetchModelsBtn}</div></summary><div class="collapsible-content">${provBar}<div class="library-models">${modelsHtml}</div></div></details>`;
+      }).join('') || '<p class="library-empty">暂无配置</p>';
       refreshReuseProviderSelect();
+      restoreModelTestBadgesFromCache();
+      wireLibraryProviderFetchButtons();
+    }
+
+    /** summary 内按钮在部分浏览器不冒泡到委托节点，故每次渲染后直接绑定 */
+    function openFetchModelsPickerModal(provider, preview) {
+      const modal = document.getElementById('fetchModelsModal');
+      const title = document.getElementById('fetchModelsModalTitle');
+      const hint = document.getElementById('fetchModelsHint');
+      const list = document.getElementById('fetchModelsList');
+      const filter = document.getElementById('fetchModelsFilter');
+      if (!modal || !list || !title || !hint) return;
+      const remoteIds = (preview && preview.remoteIds) ? preview.remoteIds.slice() : [];
+      fetchModelsModalCtx = { provider: provider, remoteIds: remoteIds };
+      modal.dataset.provider = provider;
+      title.textContent = '同步远端模型 · ' + provider;
+      let hintText = (preview && preview.message) ? String(preview.message) : '';
+      if (preview && preview.remoteIdsTruncated) {
+        hintText += ' 列表仅展示前 ' + remoteIds.length + ' 条；更多请筛选手动添加或分批操作。';
+      }
+      hint.textContent = hintText;
+      if (filter) filter.value = '';
+      const inSet = new Set(preview && preview.inConfigRemoteIds ? preview.inConfigRemoteIds : []);
+      list.innerHTML = remoteIds.map(function (id) {
+        const inC = inSet.has(id);
+        const rowCls = 'fetch-models-row' + (inC ? ' fetch-models-row--inconfig' : '');
+        const checked = inC ? ' checked' : '';
+        return '<label class="' + rowCls + '" data-mid="' + escAttr(id) + '"><input type="checkbox" name="fetchPick" value="' + escAttr(id) + '"' + checked + '><span class="fetch-models-id">' + escHtml(id) + '</span>' + (inC ? '<span class="fetch-models-badge">已入库</span>' : '') + '</label>';
+      }).join('');
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+      if (filter) {
+        filter.oninput = function () { applyFetchModelsFilter(filter.value); };
+      }
+    }
+    function applyFetchModelsFilter(q) {
+      const list = document.getElementById('fetchModelsList');
+      if (!list) return;
+      const needle = (q || '').trim().toLowerCase();
+      list.querySelectorAll('.fetch-models-row').forEach(function (row) {
+        const id = (row.getAttribute('data-mid') || '').toLowerCase();
+        row.style.display = !needle || id.indexOf(needle) >= 0 ? '' : 'none';
+      });
+    }
+    function fetchModelsPickerSelectAll(on) {
+      const list = document.getElementById('fetchModelsList');
+      if (!list) return;
+      list.querySelectorAll('.fetch-models-row').forEach(function (row) {
+        if (row.style.display === 'none') return;
+        const cb = row.querySelector('input[type="checkbox"]');
+        if (cb) cb.checked = !!on;
+      });
+    }
+    function closeFetchModelsPickerModal() {
+      const modal = document.getElementById('fetchModelsModal');
+      if (!modal) return;
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+      delete modal.dataset.provider;
+      fetchModelsModalCtx = null;
+    }
+    async function fetchModelsPickerApply() {
+      const modal = document.getElementById('fetchModelsModal');
+      const pv = modal && modal.dataset.provider;
+      const ctx = fetchModelsModalCtx;
+      if (!pv || !ctx || !ctx.remoteIds || !ctx.remoteIds.length) {
+        alert('会话已失效，请重新拉取列表');
+        return;
+      }
+      const list = document.getElementById('fetchModelsList');
+      const selectedIds = [];
+      if (list) {
+        list.querySelectorAll('input[name="fetchPick"]:checked').forEach(function (cb) {
+          if (cb.value) selectedIds.push(cb.value);
+        });
+      }
+      if (!selectedIds.length) {
+        if (!confirm('未勾选任何模型：本次列表中的远端模型将从配置中全部移除（未出现在列表里的本地模型仍会保留）。确定？')) return;
+      }
+      const applyBtn = document.getElementById('fetchModelsApplyBtn');
+      if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = '同步中…'; }
+      try {
+        const d = await apiReq('/api/provider/sync-remote-models', {
+          provider: pv,
+          remoteIds: ctx.remoteIds,
+          selectedIds: selectedIds,
+        });
+        const m = d.meta && d.meta.providerSyncRemoteModels;
+        closeFetchModelsPickerModal();
+        if (d.state) {
+          renderFromState(d.state);
+          loadUsageSnapshot();
+          loadBackupListFromApi();
+        } else await refresh();
+        if (m && m.message === '无变更') {
+          showToast('无变更');
+        } else {
+          const parts = [];
+          if (m && m.addedCount) parts.push('新增 ' + m.addedCount);
+          if (m && m.removedCount) parts.push('移除 ' + m.removedCount);
+          showToast(parts.length ? '已同步：' + parts.join('，') : '已同步');
+        }
+      } catch (err) {
+        alert(err && err.message ? err.message : '同步失败');
+      } finally {
+        if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = '应用同步'; }
+      }
+    }
+
+    async function runProviderFetchModels(fetchM) {
+      const pv = fetchM.getAttribute('data-provider');
+      if (!pv) return;
+      const orig = fetchM.innerHTML;
+      fetchM.disabled = true;
+      fetchM.textContent = '拉取中…';
+      try {
+        const d = await apiReq('/api/provider/fetch-models', { provider: pv });
+        const m = d.meta && d.meta.providerFetchModels;
+        if (!m) {
+          alert('无预览数据');
+          return;
+        }
+        const rids = m.remoteIds || [];
+        if (!rids.length) {
+          alert(m.message || '远端列表为空');
+          return;
+        }
+        openFetchModelsPickerModal(pv, m);
+      } catch (err) {
+        alert(err && err.message ? err.message : '拉取失败');
+      } finally {
+        if (fetchM.isConnected) {
+          fetchM.disabled = false;
+          fetchM.innerHTML = orig;
+        }
+      }
+    }
+
+    function wireLibraryProviderFetchButtons() {
+      const root = document.getElementById('providerSections');
+      if (!root) return;
+      root.querySelectorAll('[data-action="fetch-provider-models"]').forEach((btn) => {
+        btn.addEventListener('click', async function provFetchClick(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          await runProviderFetchModels(btn);
+        });
+      });
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById('toastMini');
+      if (!el) return;
+      el.textContent = msg;
+      el.style.display = 'block';
+      if (showToast._t) clearTimeout(showToast._t);
+      showToast._t = setTimeout(function () { el.style.display = 'none'; }, 1800);
+    }
+
+    function loadModelTestCacheMap() {
+      try {
+        const raw = sessionStorage.getItem(MODEL_TEST_STORAGE_KEY);
+        const o = raw ? JSON.parse(raw) : {};
+        return o && typeof o === 'object' ? o : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function persistModelTestToCache(ref, d, err) {
+      if (!ref) return;
+      try {
+        const map = loadModelTestCacheMap();
+        if (err) {
+          map[ref] = {
+            kind: 'err',
+            msg: err && err.message ? String(err.message) : String(err || '失败'),
+            at: Date.now(),
+          };
+        } else if (d && d.ok && typeof d.seconds === 'number') {
+          map[ref] = {
+            kind: 'ok',
+            seconds: d.seconds,
+            softWarning: d.softWarning ? String(d.softWarning) : '',
+            replyPreview: d.replyPreview ? String(d.replyPreview) : '',
+            at: Date.now(),
+          };
+        } else {
+          map[ref] = {
+            kind: 'fail',
+            error: d && d.error ? String(d.error) : '失败',
+            at: Date.now(),
+          };
+        }
+        sessionStorage.setItem(MODEL_TEST_STORAGE_KEY, JSON.stringify(map));
+      } catch (e) {}
+    }
+
+    function restoreModelTestBadgesFromCache() {
+      const map = loadModelTestCacheMap();
+      Object.keys(map).forEach(function (ref) {
+        const badge = document.getElementById(modelTestBadgeId(ref));
+        if (!badge) return;
+        const e = map[ref];
+        if (!e || typeof e !== 'object') return;
+        if (e.kind === 'err') paintModelTestBadge(ref, badge, null, { message: e.msg }, { persist: false });
+        else if (e.kind === 'ok') {
+          paintModelTestBadge(
+            ref,
+            badge,
+            { ok: true, seconds: e.seconds, softWarning: e.softWarning, replyPreview: e.replyPreview },
+            null,
+            { persist: false }
+          );
+        } else if (e.kind === 'fail') paintModelTestBadge(ref, badge, { ok: false, error: e.error }, null, { persist: false });
+      });
     }
 
     function reuseProviderFromLibrary(providerName) {
@@ -441,22 +2285,836 @@
         sel.value = providerName;
         applyReuseProvider();
       }
-      document.querySelectorAll('.tab-btn')[2].click();
+      const jumpAdd = document.querySelector('.tab-nav .tab-btn[data-tab="tab-add"]');
+      if (jumpAdd) jumpAdd.click();
+    }
+
+    function formatBytes(n) {
+      if (n == null || n === '' || typeof n !== 'number' || !isFinite(n)) return '—';
+      if (n < 1024) return String(Math.round(n)) + ' B';
+      var u = ['KB', 'MB', 'GB', 'TB'];
+      var i = -1;
+      var x = n;
+      do { x /= 1024; i++; } while (x >= 1024 && i < u.length - 1);
+      return (i === 0 ? Math.round(x) : x.toFixed(1)) + ' ' + u[i];
+    }
+    function formatTokenInt(n) {
+      if (n == null || n === '') return '—';
+      var x = typeof n === 'number' ? n : parseInt(String(n), 10);
+      if (!isFinite(x)) return '—';
+      return x.toLocaleString();
+    }
+    function fmtTokShort(s) {
+      if (s == null || s === 0) return '0';
+      var n = typeof s === 'number' ? s : parseFloat(String(s));
+      if (!isFinite(n)) return '0';
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+      if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+      return String(Math.round(n));
+    }
+    function fmtCostUsd(s) {
+      var n = typeof s === 'number' ? s : parseFloat(String(s));
+      if (isFinite(n) && n > 0) return '$' + n.toFixed(4);
+      return '$0';
+    }
+    function errRatePct(errs, total) {
+      if (!total) return '—';
+      return ((errs / total) * 100).toFixed(1) + '%';
+    }
+    var OCMA_USAGE_LIMIT = 20;
+    /** 与后端 `OPENCLAW_ADMIN_USAGE_BG_INTERVAL_SEC` 默认 300 对齐（改后台间隔时请同步改此值） */
+    var OCMA_USAGE_POLL_MS = 300000;
+    /** 与后端 `_usage_background_preset_keys` 一致：今天=1、7 天、30 天 × limit=20 */
+    var OCMA_USAGE_PRESET_DAYS = [1, 7, 30];
+    function renderUsageToolbar(currentDays) {
+      var d1 = currentDays === 1 ? 'primary' : 'ghost';
+      var d7 = currentDays === 7 ? 'primary' : 'ghost';
+      var d30 = currentDays === 30 ? 'primary' : 'ghost';
+      return (
+        '<div class="usage-admin-toolbar">' +
+        '<button type="button" class="' + d1 + '" data-usage-days="1">今天</button>' +
+        '<button type="button" class="' + d7 + '" data-usage-days="7">7 天</button>' +
+        '<button type="button" class="' + d30 + '" data-usage-days="30">30 天</button>' +
+        '</div>' +
+        '<p class="usage-cp-desc">Token、会话与模型使用统计</p>' +
+        '<p class="usage-cache-hint" role="note">后台对三档各有一份缓存（约每 5 分钟重建）。本页同一节奏并行拉 1/7/30 天三档，与后台槽一致；界面只重绘当前选中档（有更新时）。收起折叠也继续。点选某天会再拉该档。顶栏「同步」也会拉当前档。</p>'
+      );
+    }
+    /** 切换天数：对齐后端 days=1/7/30 & limit=20，拉该档服务端内存缓存并写入 sessionStorage */
+    function switchUsageDaysAndFetch(d) {
+      if (!isFinite(d) || d < 1) return;
+      window.__ocmaUsageDays = d;
+      loadUsageSnapshot();
+    }
+    /** 展开用量区时后台拉三档（不写界面当前档位逻辑，只填满本地分键缓存） */
+    function prefetchUsagePresetDaysFromServer() {
+      OCMA_USAGE_PRESET_DAYS.forEach(function (days) {
+        var u =
+          '/api/usage/snapshot?days=' +
+          encodeURIComponent(String(days)) +
+          '&limit=' +
+          encodeURIComponent(String(OCMA_USAGE_LIMIT)) +
+          '&_=' +
+          Date.now();
+        fetch(u, { cache: 'no-store', credentials: 'same-origin' })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (d) {
+            if (!d || !d.ok || !d.usage) return;
+            if (d.usageCachedAt != null) usageMarkCachedAtForDay(days, d.usageCachedAt);
+            if (usageSnapshotHasData(d.usage)) usageWriteCache(days, OCMA_USAGE_LIMIT, d.usage);
+          })
+          .catch(function () {});
+      });
+    }
+    /** 只绑定一次：innerHTML 每次重绘会换掉按钮，委托避免重复 addEventListener */
+    function ensureUsageDayClickDelegation() {
+      var el = document.getElementById('homeUsageBody');
+      if (!el || el.dataset.usageDayDelegated === '1') return;
+      el.dataset.usageDayDelegated = '1';
+      el.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.closest) return;
+        var btn = t.closest('[data-usage-days]');
+        if (!btn || !el.contains(btn)) return;
+        var d = parseInt(btn.getAttribute('data-usage-days'), 10);
+        if (isFinite(d) && d > 0) switchUsageDaysAndFetch(d);
+      });
+    }
+    function renderUsageSysFooter(u) {
+      u = u || {};
+      var touch = u.latestSessionTouchMs ? new Date(u.latestSessionTouchMs).toLocaleString() : '—';
+      var free = formatBytes(u.openclawHomeFreeBytes);
+      var total = formatBytes(u.openclawHomeTotalBytes);
+      var pct = (u.openclawHomeFreeBytes != null && u.openclawHomeTotalBytes)
+        ? Math.round(100 * (u.openclawHomeFreeBytes / u.openclawHomeTotalBytes))
+        : null;
+      var gw = (u.gatewayService || '—').replace(/\.service$/i, '');
+      var sysCells = [
+        { k: 'sessions.json', v: formatBytes(u.sessionsFileBytes), sub: '文件体积' },
+        { k: 'openclaw.json', v: formatBytes(u.configFileBytes), sub: '文件体积' },
+        { k: '数据目录余量', v: free + (pct != null ? '（约 ' + pct + '% 空闲）' : ''), sub: total !== '—' ? '卷总 ' + total : '' },
+        { k: '最近会话更新', v: touch, sub: '' },
+        { k: '网关', v: gw, sub: u.gatewayActiveSince || '' }
+      ];
+      return (
+        '<p class="usage-sys-subtitle">本机资源（辅助）</p><div class="home-usage-grid">' +
+        sysCells.map(function (c) {
+          return (
+            '<div class="home-usage-cell"><div class="home-usage-k">' + escHtml(c.k) + '</div><div class="home-usage-v">' + escHtml(c.v) + '</div>' +
+            (c.sub ? '<div class="home-usage-v--sub">' + escHtml(c.sub) + '</div>' : '') +
+            '</div>'
+          );
+        }).join('') +
+        '</div>'
+      );
+    }
+    function renderSessionsUsageClawpanel(n, u) {
+      var daysSel = u.usageDays || (typeof window.__ocmaUsageDays === 'number' ? window.__ocmaUsageDays : 7);
+      if (!n) return '<div class="usage-empty">暂无数据</div>';
+      var a = n.totals || {};
+      var o = n.aggregates || {};
+      var d = o.messages || {};
+      var p = o.tools || {};
+      var r = fmtTokShort;
+      var c = fmtCostUsd;
+      var A = errRatePct;
+      var z =
+        renderUsageToolbar(daysSel) +
+        '<div class="usage-cp-stat-grid">' +
+        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">消息</div><div class="usage-cp-stat-value">' +
+        escHtml(String(d.total != null ? d.total : 0)) +
+        '</div><div class="usage-cp-stat-meta">' +
+        escHtml(String(d.user != null ? d.user : 0)) +
+        ' 用户 · ' +
+        escHtml(String(d.assistant != null ? d.assistant : 0)) +
+        ' 助手</div></div>' +
+        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">工具调用</div><div class="usage-cp-stat-value">' +
+        escHtml(String(p.totalCalls != null ? p.totalCalls : 0)) +
+        '</div><div class="usage-cp-stat-meta">' +
+        escHtml(String(p.uniqueTools != null ? p.uniqueTools : 0)) +
+        ' 种工具</div></div>' +
+        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">错误</div><div class="usage-cp-stat-value">' +
+        escHtml(String(d.errors != null ? d.errors : 0)) +
+        '</div><div class="usage-cp-stat-meta">错误率 ' +
+        escHtml(A(d.errors, d.total)) +
+        '</div></div>' +
+        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">Token 总量</div><div class="usage-cp-stat-value">' +
+        escHtml(r(a.totalTokens)) +
+        '</div><div class="usage-cp-stat-meta">' +
+        escHtml(r(a.input)) +
+        ' 输入 · ' +
+        escHtml(r(a.output)) +
+        ' 输出</div></div>' +
+        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">费用</div><div class="usage-cp-stat-value">' +
+        escHtml(c(a.totalCost)) +
+        '</div><div class="usage-cp-stat-meta">' +
+        escHtml(c(a.inputCost)) +
+        ' 输入 · ' +
+        escHtml(c(a.outputCost)) +
+        ' 输出</div></div>' +
+        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">会话</div><div class="usage-cp-stat-value">' +
+        escHtml(String((n.sessions || []).length)) +
+        '</div><div class="usage-cp-stat-meta">' +
+        escHtml(String(n.startDate || '')) +
+        ' ~ ' +
+        escHtml(String(n.endDate || '')) +
+        '</div></div></div>';
+      function g(title, arr, labelFn, valFn) {
+        if (!arr || !arr.length) return '';
+        var h = arr.slice(0, 5).map(function (y) {
+          return (
+            '<div class="usage-cp-top-row"><span class="usage-cp-top-l">' +
+            escHtml(labelFn(y)) +
+            '</span><span class="usage-cp-top-r">' +
+            escHtml(valFn(y)) +
+            '</span></div>'
+          );
+        }).join('');
+        return '<div class="usage-cp-top-card"><div class="usage-cp-top-title">' + escHtml(title) + '</div>' + h + '</div>';
+      }
+      var D = g('热门模型', o.byModel, function (s) {
+        return s.model || '未知';
+      }, function (s) {
+        var t = s.totals || {};
+        return c(t.totalCost) + ' · ' + r(t.totalTokens);
+      });
+      var F = g('热门服务商', o.byProvider, function (s) {
+        return s.provider || '未知';
+      }, function (s) {
+        var t = s.totals || {};
+        return c(t.totalCost) + ' · ' + String(s.count != null ? s.count : 0) + ' 次';
+      });
+      var P = g('热门工具', p.tools || [], function (s) {
+        return s.name || '';
+      }, function (s) {
+        return String(s.count != null ? s.count : 0) + ' 次调用';
+      });
+      var U = g('热门 Agent', o.byAgent, function (s) {
+        return s.agentId || 'main';
+      }, function (s) {
+        var t = s.totals || {};
+        return c(t.totalCost);
+      });
+      var j = g('热门渠道', o.byChannel, function (s) {
+        return s.channel || 'webchat';
+      }, function (s) {
+        var t = s.totals || {};
+        return c(t.totalCost);
+      });
+      var E = '<div class="usage-cp-tops-grid">' + D + F + P + U + j + '</div>';
+      var R =
+        '<div class="usage-section" style="margin-top:4px"><div class="usage-cp-section-title">Token 分类</div><div class="usage-cp-token-legend">' +
+        '<div><span style="display:inline-block;width:10px;height:10px;background:var(--claude-danger,#ef4444);border-radius:2px;margin-right:6px"></span>输出 ' +
+        escHtml(r(a.output)) +
+        '</div>' +
+        '<div><span style="display:inline-block;width:10px;height:10px;background:var(--claude-accent,#6366f1);border-radius:2px;margin-right:6px"></span>输入 ' +
+        escHtml(r(a.input)) +
+        '</div>' +
+        '<div><span style="display:inline-block;width:10px;height:10px;background:var(--claude-success,#22c55e);border-radius:2px;margin-right:6px"></span>缓存读取 ' +
+        escHtml(r(a.cacheRead)) +
+        '</div>' +
+        '<div><span style="display:inline-block;width:10px;height:10px;background:var(--claude-warning,#eab308);border-radius:2px;margin-right:6px"></span>缓存写入 ' +
+        escHtml(r(a.cacheWrite)) +
+        '</div></div></div>';
+      var x = o.daily || [];
+      var T = '';
+      if (x.length > 0) {
+        var maxT = Math.max.apply(
+          null,
+          x.map(function (e) {
+            return e.tokens || 0;
+          }).concat([1])
+        );
+        T =
+          '<div class="usage-section" style="margin-top:8px"><div class="usage-cp-section-title">每日用量</div><div class="usage-daily-chart">' +
+          x
+            .map(function (e) {
+              var u0 = Math.max(1, Math.round(((e.tokens || 0) / maxT) * 100));
+              var m = (e.date || '').slice(5);
+              var tip = (e.date || '') + ': ' + r(e.tokens) + ' tokens · ' + (e.messages != null ? e.messages : 0) + ' msgs';
+              return (
+                '<div class="usage-daily-bar-wrap" title="' +
+                escHtml(tip) +
+                '"><div class="usage-daily-bar" style="height:' +
+                u0 +
+                '%"></div><div class="usage-daily-label">' +
+                escHtml(m) +
+                '</div></div>'
+              );
+            })
+            .join('') +
+          '</div></div>';
+      }
+      var k = (n.sessions || []).slice(0, 10);
+      var C = '';
+      if (k.length > 0) {
+        var s = k.map(function (t) {
+          var e = t.usage || {};
+          var rawKey = String(t.key || '');
+          var u0 = rawKey.replace(/^agent:main:/, '');
+          var mu = e.modelUsage && e.modelUsage[0];
+          var m = t.model || (mu && mu.model) || '';
+          var h = (mu && mu.provider) || t.modelProvider || '';
+          var mc = e.messageCounts || {};
+          var errPart = mc.errors ? ' · ' + mc.errors + ' err' : '';
+          var sid = t.sessionId ? String(t.sessionId).slice(0, 12) : '';
+          var head =
+            '<div class="usage-cp-session-head"><span class="usage-cp-session-key" title="' +
+            escHtml(rawKey) +
+            '">' +
+            escHtml(u0 || sid || '—') +
+            '</span>';
+          if (t.agentId) head += '<span class="usage-cp-flag">' + escHtml(String(t.agentId)) + '</span>';
+          if (m) head += '<span class="usage-cp-flag">' + escHtml(String(m)) + '</span>';
+          if (h) head += '<span class="usage-cp-flag">' + escHtml(String(h)) + '</span>';
+          head += '</div>';
+          var meta =
+            '<div class="usage-cp-session-meta">' +
+            escHtml(r(e.totalTokens)) +
+            ' tokens · ' +
+            escHtml(c(e.totalCost)) +
+            ' · ' +
+            escHtml(String(mc.total != null ? mc.total : 0)) +
+            ' msgs' +
+            escHtml(errPart) +
+            '</div>';
+          return '<div class="usage-cp-session-row">' + head + meta + '</div>';
+        }).join('');
+        C =
+          '<div class="usage-section" style="margin-top:8px"><div class="usage-cp-section-title">会话明细 <span style="font-weight:600;color:var(--claude-muted);font-size:11px">最近 ' +
+          k.length +
+          ' 个</span></div><div class="usage-cp-session-list">' +
+          s +
+          '</div></div>';
+      }
+      return z + E + R + T + C;
+    }
+    function emptyUsagePanelPayload(days) {
+      var d = Math.max(1, parseInt(String(days), 10) || 7);
+      var a = new Date();
+      var end = a.toISOString().slice(0, 10);
+      var start = new Date(a.getTime() - (d - 1) * 86400000).toISOString().slice(0, 10);
+      return {
+        updatedAt: Date.now(),
+        startDate: start,
+        endDate: end,
+        sessions: [],
+        totals: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          totalCost: 0,
+          inputCost: 0,
+          outputCost: 0,
+          cacheReadCost: 0,
+          cacheWriteCost: 0,
+          missingCostEntries: 0,
+        },
+        aggregates: {
+          messages: { total: 0, user: 0, assistant: 0, errors: 0 },
+          tools: { totalCalls: 0, uniqueTools: 0, tools: [] },
+          byModel: [],
+          byProvider: [],
+          byAgent: [],
+          byChannel: [],
+          daily: [],
+        },
+      };
+    }
+    function renderUsageBody(u) {
+      var el = document.getElementById('homeUsageBody');
+      if (!el) return;
+      u = u || {};
+      var n = u.sessionsUsage;
+      if (!n || typeof n !== 'object') {
+        n = emptyUsagePanelPayload(u.usageDays || window.__ocmaUsageDays || 7);
+      }
+      el.innerHTML = renderSessionsUsageClawpanel(n, u) + renderUsageSysFooter(u);
+      ensureUsageDayClickDelegation();
+    }
+    var __ocmaUsageFetchSeq = 0;
+    var __ocmaUsagePollSeq = 0;
+    window.__ocmaLastUsageCachedAtByDay = window.__ocmaLastUsageCachedAtByDay || {};
+    window.__ocmaUsagePollTimer = window.__ocmaUsagePollTimer || null;
+    function usageMarkCachedAtForDay(days, at) {
+      if (at == null) return;
+      window.__ocmaLastUsageCachedAtByDay[days] = at;
+    }
+    function usageCachedAtUnchangedForDay(days, at) {
+      if (at == null) return false;
+      var m = window.__ocmaLastUsageCachedAtByDay;
+      if (!m || m[days] === undefined) return false;
+      return m[days] === at;
+    }
+    function usageCacheStorageKey(days, limit) {
+      return 'openclaw-model-admin.usageSnapshot.v1.' + days + '.' + limit;
+    }
+    function usageSnapshotHasData(usage) {
+      if (!usage || typeof usage !== 'object') return false;
+      var su = usage.sessionsUsage;
+      if (!su || typeof su !== 'object') return false;
+      var sess = su.sessions;
+      if (Array.isArray(sess) && sess.length > 0) return true;
+      var tot = su.totals;
+      if (tot && typeof tot === 'object') {
+        var tok = Number(tot.totalTokens) || 0;
+        if (tok > 0) return true;
+      }
+      return false;
+    }
+    function usageReadCache(days, limit) {
+      try {
+        var raw = sessionStorage.getItem(usageCacheStorageKey(days, limit));
+        if (!raw) return null;
+        var o = JSON.parse(raw);
+        if (!o || typeof o !== 'object') return null;
+        if (o.days !== days || o.limit !== limit || !o.usage) return null;
+        if (!usageSnapshotHasData(o.usage)) return null;
+        return o.usage;
+      } catch (e) {
+        return null;
+      }
+    }
+    function usageWriteCache(days, limit, usage) {
+      try {
+        var k = usageCacheStorageKey(days, limit);
+        if (!usageSnapshotHasData(usage)) {
+          sessionStorage.removeItem(k);
+          return;
+        }
+        sessionStorage.setItem(
+          k,
+          JSON.stringify({ days: days, limit: limit, usage: usage || {}, savedAt: Date.now() })
+        );
+      } catch (e) {}
+    }
+    function usagePanelHasRenderedContent(el) {
+      if (!el) return false;
+      return !!(el.querySelector('.home-usage-cell') || el.querySelector('.usage-cp-stat-grid'));
+    }
+    /** 与后台三槽一致：每次 tick 并行 GET 1/7/30，更新各档 sessionStorage；仅当前选中档且 usageCachedAt 变化时重绘 */
+    async function pollUsageSnapshotFromServerCache() {
+      var el = document.getElementById('homeUsageBody');
+      if (!el) return;
+      if (typeof window.__ocmaUsageDays !== 'number' || window.__ocmaUsageDays < 1) window.__ocmaUsageDays = 7;
+      var current = window.__ocmaUsageDays;
+      var ps = ++__ocmaUsagePollSeq;
+      try {
+        var bust = Date.now();
+        var results = await Promise.all(
+          OCMA_USAGE_PRESET_DAYS.map(function (days) {
+            var u =
+              '/api/usage/snapshot?days=' +
+              encodeURIComponent(String(days)) +
+              '&limit=' +
+              encodeURIComponent(String(OCMA_USAGE_LIMIT)) +
+              '&_=' +
+              bust +
+              '_' +
+              days;
+            return fetch(u, { cache: 'no-store', credentials: 'same-origin' }).then(function (r) {
+              return r.json();
+            });
+          })
+        );
+        if (ps !== __ocmaUsagePollSeq) return;
+        for (var i = 0; i < OCMA_USAGE_PRESET_DAYS.length; i++) {
+          var days = OCMA_USAGE_PRESET_DAYS[i];
+          var d = results[i];
+          if (!d || !d.ok || !d.usage) continue;
+          var at = d.usageCachedAt;
+          var unchanged = usageCachedAtUnchangedForDay(days, at);
+          if (usageSnapshotHasData(d.usage)) usageWriteCache(days, OCMA_USAGE_LIMIT, d.usage);
+          if (at != null) usageMarkCachedAtForDay(days, at);
+          if (days === current && !unchanged) renderUsageBody(d.usage);
+        }
+      } catch (e) {}
+    }
+    /** 全页只启一个定时器：收起「使用情况」时仍轮询，sessionStorage 与隐藏区 DOM 保持与后台缓存同步 */
+    function ensureUsagePollStarted() {
+      if (window.__ocmaUsagePollTimer) return;
+      window.__ocmaUsagePollTimer = setInterval(function () {
+        pollUsageSnapshotFromServerCache();
+      }, OCMA_USAGE_POLL_MS);
+    }
+    function wireHomeUsageCardPoll() {
+      var det = document.getElementById('homeUsageCard');
+      if (!det || det.dataset.ocmaUsagePollWired) return;
+      det.dataset.ocmaUsagePollWired = '1';
+      det.addEventListener('toggle', function () {
+        if (det.open) {
+          ensureUsagePollStarted();
+          prefetchUsagePresetDaysFromServer();
+          loadUsageSnapshot();
+        }
+      });
+    }
+    /** 仅 GET 后台缓存（无 force）；先 sessionStorage 再拉接口，与后台约 5 分钟三档刷新一致 */
+    async function loadUsageSnapshot() {
+      var el = document.getElementById('homeUsageBody');
+      if (!el) return;
+      if (typeof window.__ocmaUsageDays !== 'number' || window.__ocmaUsageDays < 1) window.__ocmaUsageDays = 7;
+      var days = window.__ocmaUsageDays;
+
+      var cached = usageReadCache(days, OCMA_USAGE_LIMIT);
+      if (cached) {
+        renderUsageBody(cached);
+      }
+      if (!usagePanelHasRenderedContent(el)) {
+        renderUsageBody({ usageDays: days, usageLimit: OCMA_USAGE_LIMIT });
+      }
+
+      var seq = ++__ocmaUsageFetchSeq;
+      var urlBase =
+        '/api/usage/snapshot?days=' +
+        encodeURIComponent(String(days)) +
+        '&limit=' +
+        encodeURIComponent(String(OCMA_USAGE_LIMIT));
+      try {
+        var r = await fetch(urlBase + '&_=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' });
+        var d = await r.json();
+        if (seq !== __ocmaUsageFetchSeq) return;
+        if (!d.ok) throw new Error(d.error || '失败');
+        renderUsageBody(d.usage || {});
+        if (d.usageCachedAt != null) usageMarkCachedAtForDay(days, d.usageCachedAt);
+        if (usageSnapshotHasData(d.usage)) usageWriteCache(days, OCMA_USAGE_LIMIT, d.usage);
+      } catch (e) {
+        if (seq !== __ocmaUsageFetchSeq) return;
+        renderUsageBody({
+          usageDays: days,
+          usageLimit: OCMA_USAGE_LIMIT,
+          sessionsUsage: emptyUsagePanelPayload(days),
+        });
+      }
+    }
+    async function loadGatewayLogs() {
+      var pre = document.getElementById('gatewayLogBody');
+      var meta = document.getElementById('gatewayLogMeta');
+      var sel = document.getElementById('gatewayLogLines');
+      var n = sel ? parseInt(String(sel.value || '200'), 10) : 200;
+      if (!pre) return;
+      pre.textContent = '加载中…';
+      try {
+        var r = await fetch('/api/gateway/logs?lines=' + encodeURIComponent(String(n)));
+        var d = await r.json();
+        if (!d.ok) {
+          pre.textContent = d.error || '获取失败（可检查 journalctl 权限或设置 OPENCLAW_GATEWAY_LOG_FILE）';
+          if (meta) meta.textContent = '来源：失败 · ' + (d.service || '网关单元');
+          return;
+        }
+        pre.textContent = d.text || '（无内容）';
+        if (meta) {
+          var bits = ['来源：' + (d.source || '—')];
+          if (d.service) bits.push('单元 ' + d.service);
+          if (d.path) bits.push('文件 ' + d.path);
+          bits.push('约 ' + (d.lineCount != null ? d.lineCount : 0) + ' 行');
+          meta.textContent = bits.join(' · ');
+        }
+      } catch (e) {
+        pre.textContent = '请求失败：' + (e && e.message ? e.message : e);
+      }
+    }
+    function initGatewayLogPanel() {
+      var det = document.getElementById('gatewayLogDetails');
+      var btn = document.getElementById('gatewayLogRefreshBtn');
+      if (btn) btn.addEventListener('click', function () { loadGatewayLogs(); });
+      if (det) {
+        det.addEventListener('toggle', function () {
+          if (det.open && det.dataset.logLoaded !== '1') {
+            det.dataset.logLoaded = '1';
+            loadGatewayLogs();
+          }
+        });
+      }
+    }
+
+    var _backupListCache = [];
+    function syncRestoreBackupSelectFromCache() {
+      var panel = document.getElementById('backupRestorePanel');
+      var sel = document.getElementById('restoreBackupSelect');
+      if (!panel || !sel || !panel.classList.contains('is-open')) return;
+      var list = _backupListCache || [];
+      var prev = sel.value;
+      if (!list.length) {
+        sel.innerHTML = '';
+        return;
+      }
+      sel.innerHTML = list.map(function (b) {
+        var label = b.id + ' · ' + (b.createdAt || '') + ' · ' + (b.reason || '');
+        return '<option value="' + escAttr(b.id) + '">' + escHtml(label) + '</option>';
+      }).join('');
+      if (prev && list.some(function (b) { return b.id === prev; })) sel.value = prev;
+    }
+    async function loadBackupListFromApi() {
+      try {
+        var r = await fetch('/api/backup/list');
+        var d = await r.json();
+        if (!d.ok) return d;
+        _backupListCache = d.backups || [];
+        var ph = document.getElementById('backupPathHint');
+        if (ph) ph.textContent = d.backupDir ? ('备份目录：' + d.backupDir) : '';
+        var rh = document.getElementById('backupRetentionHint');
+        if (rh && d.retentionDays != null) rh.textContent = String(d.retentionDays);
+        var ih = document.getElementById('backupIntervalHint');
+        if (ih && d.intervalSec != null) {
+          var min = Math.max(1, Math.round(Number(d.intervalSec) / 60));
+          ih.textContent = String(min);
+        }
+        syncRestoreBackupSelectFromCache();
+        return d;
+      } catch (e) {
+        return { ok: false };
+      }
+    }
+    async function backupNowClick() {
+      var btn = document.getElementById('backupNowBtn');
+      if (btn) btn.disabled = true;
+      try {
+        var cr = await apiReq('/api/backup/create', { reason: 'manual' });
+        var bid = cr.meta && cr.meta.adminBackup && cr.meta.adminBackup.id;
+        showToast(bid ? ('已创建备份 ' + bid) : '已创建备份');
+        await loadBackupListFromApi();
+        var panel = document.getElementById('backupRestorePanel');
+        var sel = document.getElementById('restoreBackupSelect');
+        if (panel && panel.classList.contains('is-open') && sel && sel.options.length) sel.selectedIndex = 0;
+      } catch (e) {
+        alert(e && e.message ? e.message : '备份失败');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+    function setBackupRestorePanelOpen(open) {
+      var panel = document.getElementById('backupRestorePanel');
+      var toggleBtn = document.getElementById('backupRestoreOpenBtn');
+      if (!panel) return;
+      if (open) {
+        panel.classList.add('is-open');
+        panel.setAttribute('aria-hidden', 'false');
+        if (toggleBtn) {
+          toggleBtn.textContent = '收起';
+          toggleBtn.setAttribute('aria-expanded', 'true');
+        }
+      } else {
+        panel.classList.remove('is-open');
+        panel.setAttribute('aria-hidden', 'true');
+        if (toggleBtn) {
+          toggleBtn.textContent = '从备份恢复';
+          toggleBtn.setAttribute('aria-expanded', 'false');
+        }
+      }
+    }
+    async function toggleBackupRestorePanel() {
+      var panel = document.getElementById('backupRestorePanel');
+      if (!panel) return;
+      if (panel.classList.contains('is-open')) {
+        setBackupRestorePanelOpen(false);
+        return;
+      }
+      var d = await loadBackupListFromApi();
+      var list = (d && d.ok && d.backups) ? d.backups : _backupListCache;
+      if (!list.length) {
+        alert('暂无可恢复的备份');
+        return;
+      }
+      var sel = document.getElementById('restoreBackupSelect');
+      if (sel) {
+        sel.innerHTML = list.map(function (b) {
+          var label = b.id + ' · ' + (b.createdAt || '') + ' · ' + (b.reason || '');
+          return '<option value="' + escAttr(b.id) + '">' + escHtml(label) + '</option>';
+        }).join('');
+      }
+      setBackupRestorePanelOpen(true);
+      if (sel) try { sel.focus(); } catch (e) {}
+    }
+    async function confirmRestoreBackup() {
+      var sel = document.getElementById('restoreBackupSelect');
+      var id = sel && sel.value;
+      if (!id) return;
+      if (!confirm('确认用该快照覆盖当前 openclaw.json（若备份含 sessions.json 则一并覆盖）？会先自动备份当前文件。')) return;
+      var btn = document.getElementById('restoreBackupConfirmBtn');
+      if (btn) { btn.disabled = true; btn.textContent = '恢复中…'; }
+      try {
+        var d = await apiReq('/api/backup/restore', { id: id });
+        setBackupRestorePanelOpen(false);
+        if (d.state) renderFromState(d.state);
+        else await refresh();
+        loadUsageSnapshot();
+        await loadBackupListFromApi();
+        showToast('已恢复，建议随后点顶栏「应用」或「重启」');
+      } catch (e) {
+        alert(e && e.message ? e.message : '恢复失败');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '恢复选中'; }
+      }
+    }
+    function formatCheckedAtLocal(iso) {
+      if (!iso) return '';
+      try {
+        return new Date(iso).toLocaleString();
+      } catch (_) {
+        return String(iso);
+      }
+    }
+
+    function applyOpenclawVersionCheckUi(d) {
+      const latestEl = document.getElementById('openclawLatestLine');
+      const statusEl = document.getElementById('openclawVersionStatusLine');
+      const chkEl = document.getElementById('openclawCheckedAtLine');
+      const btn = document.getElementById('openclawUpdateBtn');
+      const rbtn = document.getElementById('openclawRecheckBtn');
+      if (!latestEl) return;
+      if (!d || d.ok !== true) {
+        latestEl.textContent = '—';
+        if (statusEl) statusEl.textContent = d && d.error ? String(d.error) : '版本检查失败';
+        if (chkEl) chkEl.textContent = '';
+        if (btn) { btn.style.display = 'none'; btn.disabled = false; btn.textContent = '更新 OpenClaw'; }
+        if (rbtn) { rbtn.style.display = 'inline-block'; rbtn.disabled = false; }
+        return;
+      }
+      const lat = d.latestVersion != null && String(d.latestVersion) !== '' ? String(d.latestVersion) : null;
+      const cur = d.currentVersion != null && String(d.currentVersion) !== '' ? String(d.currentVersion) : null;
+      const cliLine = document.getElementById('openclawCliVersionLine');
+      if (cliLine && cur) cliLine.textContent = cur;
+      if (d.currentError && cliLine) {
+        cliLine.textContent = '—（' + d.currentError + '）';
+      }
+      latestEl.textContent = lat || '—';
+      let st = '';
+      if (d.latestError && !lat) {
+        st = '无法获取 npm 最新版本：' + d.latestError;
+      } else if (d.isLatest === true) {
+        st = '已是最新版本（与 npm stable 一致）';
+      } else if (d.isLatest === false && lat) {
+        st = '可更新：npm 上有更新包 ' + lat;
+      } else {
+        st = '无法判断是否为最新（请点重新检查或确认本机已安装 openclaw / npm）';
+      }
+      if (statusEl) statusEl.textContent = st;
+      if (chkEl) {
+        chkEl.textContent = d.checkedAt
+          ? ('上次检查：' + formatCheckedAtLocal(d.checkedAt) + (d.fromCache ? '（缓存）' : ''))
+          : '';
+      }
+      if (btn) {
+        btn.style.display = d.updateAvailable ? 'inline-block' : 'none';
+        btn.disabled = false;
+        btn.textContent = '更新 OpenClaw';
+      }
+      if (rbtn) {
+        rbtn.style.display = 'inline-block';
+        rbtn.disabled = false;
+      }
+    }
+
+    async function fetchOpenclawVersionCheck(force) {
+      const latestEl = document.getElementById('openclawLatestLine');
+      const statusEl = document.getElementById('openclawVersionStatusLine');
+      const btn = document.getElementById('openclawUpdateBtn');
+      const rbtn = document.getElementById('openclawRecheckBtn');
+      if (!latestEl) return;
+      latestEl.textContent = '检查中…';
+      if (statusEl && force) statusEl.textContent = '';
+      if (btn) btn.disabled = true;
+      if (rbtn) rbtn.disabled = true;
+      try {
+        const r = await fetch('/api/openclaw/version-check?force=' + (force ? '1' : '0'), { cache: 'no-store' });
+        const d = await r.json();
+        applyOpenclawVersionCheckUi(d);
+      } catch (e) {
+        applyOpenclawVersionCheckUi({ ok: false, error: e && e.message ? e.message : '网络错误' });
+      }
+    }
+
+    async function runOpenclawUpdateClick() {
+      if (!confirm('将执行官方命令：openclaw update --yes --json（默认成功后会重启网关）。可能需要数分钟，确定继续？')) return;
+      const btn = document.getElementById('openclawUpdateBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '更新中…';
+      }
+      try {
+        const d = await apiReq('/api/openclaw/update', {});
+        if (d.ok) {
+          const tv = d.result && d.result.targetVersion != null ? String(d.result.targetVersion) : '';
+          showToast(tv ? ('OpenClaw 已更新至 ' + tv) : 'OpenClaw 更新已完成');
+          await fetchOpenclawVersionCheck(true);
+          await refresh();
+        } else {
+          alert(d && d.error ? d.error : '更新失败');
+        }
+      } catch (e) {
+        alert(e && e.message ? e.message : '更新失败');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '更新 OpenClaw';
+        }
+      }
+    }
+
+    function initLocalMachineInfoPanel() {
+      const det = document.getElementById('localMachineInfoDetails');
+      if (det) {
+        det.addEventListener('toggle', function () {
+          if (det.open) fetchOpenclawVersionCheck(true);
+        });
+      }
+      document.addEventListener('click', function (ev) {
+        const t = ev.target;
+        if (!t || !t.id) return;
+        if (t.id === 'openclawUpdateBtn') {
+          ev.preventDefault();
+          runOpenclawUpdateClick();
+        }
+        if (t.id === 'openclawRecheckBtn') {
+          ev.preventDefault();
+          fetchOpenclawVersionCheck(true);
+        }
+      });
+    }
+
+    function ensureOpenclawVersionPoll() {
+      if (ocmaOpenclawPollTimer) clearInterval(ocmaOpenclawPollTimer);
+      ocmaOpenclawPollTimer = setInterval(function () {
+        fetchOpenclawVersionCheck(false);
+      }, OCMA_OPENCLAW_POLL_MS);
+    }
+
+    function initBackupPanel() {
+      var bn = document.getElementById('backupNowBtn');
+      if (bn) bn.addEventListener('click', function () { backupNowClick(); });
+      var bro = document.getElementById('backupRestoreOpenBtn');
+      if (bro) bro.addEventListener('click', function () { toggleBackupRestorePanel(); });
+      var rcb = document.getElementById('restoreBackupConfirmBtn');
+      if (rcb) rcb.addEventListener('click', function () { confirmRestoreBackup(); });
+      var det = document.getElementById('backupPanelDetails');
+      if (det) {
+        det.addEventListener('toggle', function () {
+          if (det.open) loadBackupListFromApi();
+        });
+      }
     }
 
     async function refresh() {
       try {
         const d = await apiReq('/api/state');
         renderFromState(d.state);
+        loadUsageSnapshot();
+        loadBackupListFromApi();
         return true;
       } catch(e) {
         const plh = document.getElementById('pageLoadHint');
         if (plh) {
           plh.style.display = 'block';
-          plh.textContent = '无法载入配置，请确认本页端口对应的管理端已启动';
+          plh.textContent = '无法载入配置，请确认当前页所连主机上的管理端已启动（' + (location.origin || '') + '）';
         }
         document.getElementById('topAlertBar').style.display = 'block';
-        document.getElementById('topAlertBar').innerText = '⚠ 无法与管理后台建立连接，请检查网关及端口 8765';
+        document.getElementById('topAlertBar').innerText = '⚠ 无法与管理后台 API 建立连接（' + (location.origin || '') + '）';
+        loadUsageSnapshot();
         return false;
       }
     }
@@ -466,28 +3124,21 @@
       setLoading('syncBtn', true);
       try {
         const ok = await refresh();
-        if (ok) setLoading('syncBtn', false, { success: '已刷新' });
+        if (ok) setLoading('syncBtn', false, { success: true });
         else setLoading('syncBtn', false, { error: true });
       } catch(e) {
         setLoading('syncBtn', false, { error: true });
       }
     }
-    
+
     async function saveSelection() {
       setLoading('saveBtn', true);
       try {
-        const p = document.getElementById('pModel').value;
-        const f = [document.getElementById('f1Model').value, document.getElementById('f2Model').value].filter(v => v && v!==p);
-        const e = document.getElementById('elevatedDefault').value;
-        const applyToSessions = document.getElementById('applyToSessions').value === 'on';
-        const rd = document.getElementById('reasoningDisplay').value;
-        const pThinkOn = document.getElementById('pThinkingEnabled').value === 'on';
-        const pThinkVal = document.getElementById('pThinkingValue').value;
-        await apiReq('/api/selection', { primary:p, fallbacks:f, elevatedDefault:e, reasoningDisplay: rd, applyToSessions, clearModelOverrides: false, primaryThinkingEnabled: pThinkOn, primaryThinkingValue: pThinkVal });
-        await apiReq('/api/restart', {});
-        await refresh();
-        setLoading('saveBtn', false, { success: '已保存' });
-      } catch(e) { setLoading('saveBtn', false, { error: true }); }
+        await applyFullDeploy();
+        setLoading('saveBtn', false, { success: true });
+      } catch (e) {
+        setLoading('saveBtn', false, { error: true });
+      }
     }
     
     function refreshReuseProviderSelect() {
@@ -500,6 +3151,18 @@
       if (prev && list.some((x) => x.name === prev)) sel.value = prev;
     }
 
+    /** 复用供应商时推断默认接口：磁盘 provider.api > 子模型唯一 api；多协议并存不调用 autoDetect（避免 /v1 把整站误判成 completions 覆盖） */
+    function inferReuseApi(p) {
+      if (!p || !state) return 'openai-completions';
+      const legacy = (p.api || '').trim();
+      if (legacy && legacy !== 'per-model') return legacy;
+      const models = (state.models || []).filter((m) => m.provider === p.name);
+      const apis = models.map((m) => (m.api && String(m.api).trim()) || '').filter(Boolean);
+      if (apis.length === 0) return 'openai-completions';
+      const uniq = [...new Set(apis)];
+      if (uniq.length === 1) return uniq[0];
+      return 'openai-completions';
+    }
     /** 从已有供应商带入连接信息，仅留模型 ID/名称给用户填 */
     function applyReuseProvider() {
       const sel = document.getElementById('reuseProviderSelect');
@@ -511,7 +3174,7 @@
       const bu = (p.baseUrl || '').trim();
       document.getElementById('baseUrl').value = bu && !bu.startsWith('(') ? bu : '';
       document.getElementById('auth').value = p.auth === 'oauth' ? '' : (p.auth || 'api-key');
-      document.getElementById('api').value = p.api || 'openai-completions';
+      document.getElementById('api').value = inferReuseApi(p);
       document.getElementById('apiKey').value = '';
       document.getElementById('modelId').value = '';
       document.getElementById('modelName').value = '';
@@ -520,7 +3183,7 @@
       syncThinkingRow();
       document.getElementById('contextWindow').value = '200000';
       setMaxTokensUi(32768);
-      autoDetectApiType(document.getElementById('baseUrl').value);
+      document.getElementById('apiDetectHint').style.display = 'none';
       document.getElementById('addTabTitle').innerText = '同供应商新增 · ' + p.name;
       document.getElementById('cancelEditBtn').style.display = 'flex';
       document.getElementById('modelId').focus();
@@ -539,7 +3202,8 @@
       document.getElementById('auth').value = provider ? (provider.auth === 'oauth' ? '' : provider.auth) : 'api-key';
       {
         const ma = model.api != null && String(model.api).trim() !== '' ? String(model.api).trim() : '';
-        document.getElementById('api').value = ma || (provider && provider.api ? provider.api : 'openai-completions');
+        const pa = provider && provider.api && provider.api !== 'per-model' ? String(provider.api).trim() : '';
+        document.getElementById('api').value = ma || pa || 'openai-completions';
       }
       const mt = (model.thinking || 'off').toString();
       const off = !mt || mt === 'off';
@@ -550,7 +3214,8 @@
       setMaxTokensUi(model.maxTokens != null ? model.maxTokens : 32768);
       document.getElementById('addTabTitle').innerText = '编辑: ' + model.id;
       document.getElementById('cancelEditBtn').style.display = 'flex';
-      document.querySelectorAll('.tab-btn')[2].click();
+      const jumpAdd2 = document.querySelector('.tab-nav .tab-btn[data-tab="tab-add"]');
+      if (jumpAdd2) jumpAdd2.click();
     }
     function cancelEdit() {
       const rs = document.getElementById('reuseProviderSelect');
@@ -575,7 +3240,7 @@
         await apiReq('/api/model', b);
         await apiReq('/api/restart', {});
         await refresh();
-        /* 完成态仅用按钮动效（setLoading success），不用长文案/弹窗；思考同步细节见路由区模型配置 */
+        /* 完成态仅用按钮动效（setLoading success）；模型思考在「接入配置」里维护 */
         setLoading('addBtn', false, { success: '已部署' });
         cancelEdit();
       } catch(e) { setLoading('addBtn', false, { error: true }); }
@@ -593,6 +3258,119 @@
       } catch (e) {
         setLoading(btnId, false, { error: true });
       }
+    }
+
+    function modelTestBadgeId(ref) {
+      return 'mtb_' + String(ref).replace(/\//g, '_').replace(/\./g, '_').replace(/:/g, '_');
+    }
+
+    function modelTestBadgeClassForSeconds(sec) {
+      const ms = Number(sec) * 1000;
+      if (!Number.isFinite(ms)) return 'library-test-badge library-test-badge--muted';
+      if (ms < 3000) return 'library-test-badge library-test-badge--fast';
+      if (ms < 8000) return 'library-test-badge library-test-badge--mid';
+      return 'library-test-badge library-test-badge--slow';
+    }
+
+    function paintModelTestBadge(ref, badge, d, err, opts) {
+      opts = opts || {};
+      const doPersist = opts.persist !== false;
+      if (!badge) return;
+      if (err) {
+        badge.className = 'library-test-badge library-test-badge--slow';
+        const m = err && err.message ? String(err.message) : String(err || '失败');
+        badge.textContent = m.slice(0, 80);
+        badge.title = m;
+        if (doPersist) persistModelTestToCache(ref, null, err);
+        return;
+      }
+      if (d && d.ok && typeof d.seconds === 'number') {
+        badge.className = modelTestBadgeClassForSeconds(d.seconds);
+        let t = d.seconds.toFixed(1) + 's';
+        if (d.softWarning) t += ' · 弱成功';
+        badge.textContent = t;
+        badge.title = d.softWarning || d.replyPreview || '';
+        if (doPersist) persistModelTestToCache(ref, d, null);
+      } else {
+        badge.className = 'library-test-badge library-test-badge--slow';
+        badge.textContent = d && d.error ? String(d.error).slice(0, 80) : '失败';
+        badge.title = badge.textContent;
+        if (doPersist) persistModelTestToCache(ref, d, null);
+      }
+    }
+
+    function setModelTestBadgePending(badge) {
+      if (!badge) return;
+      badge.textContent = '…';
+      badge.className = 'library-test-badge library-test-badge--muted';
+      badge.title = '';
+    }
+
+    /** 与 ClawPanel test_model 一致：非流式短请求，测整段往返（秒），结果写在卡片右侧 */
+    async function runModelConnectivityTest(btn, ref) {
+      const badge = document.getElementById(modelTestBadgeId(ref));
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '测速中...';
+      setModelTestBadgePending(badge);
+      try {
+        const d = await apiReq('/api/model/test', { ref });
+        paintModelTestBadge(ref, badge, d, null);
+      } catch (e) {
+        paintModelTestBadge(ref, badge, null, e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    }
+
+    /** 按顺序测该供应商下全部模型（仅已有测速徽章的供应商会显示此按钮） */
+    async function batchTestProviderModels(btn, providerName) {
+      if (!state || !providerName) return;
+      const refs = (state.models || [])
+        .filter((m) => m && m.provider === providerName && m.ref)
+        .map((m) => m.ref);
+      if (!refs.length) return;
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '测速中…';
+      try {
+        refs.forEach((ref) => setModelTestBadgePending(document.getElementById(modelTestBadgeId(ref))));
+        await Promise.all(
+          refs.map(async (ref) => {
+            const badge = document.getElementById(modelTestBadgeId(ref));
+            try {
+              const d = await apiReq('/api/model/test', { ref });
+              paintModelTestBadge(ref, badge, d, null);
+            } catch (e) {
+              paintModelTestBadge(ref, badge, null, e);
+            }
+          })
+        );
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    }
+
+    function bindLibraryModelTestDelegate() {
+      const root = document.getElementById('providerSections');
+      if (!root || root.dataset.modelTestBound === '1') return;
+      root.dataset.modelTestBound = '1';
+      root.addEventListener('click', async (e) => {
+        const batch = e.target.closest('[data-action="batch-test-provider"]');
+        if (batch && root.contains(batch)) {
+          e.preventDefault();
+          const p = batch.getAttribute('data-provider');
+          if (p) batchTestProviderModels(batch, p);
+          return;
+        }
+        const b = e.target.closest('[data-action="test-model"]');
+        if (!b || !root.contains(b)) return;
+        e.preventDefault();
+        const r = b.getAttribute('data-ref');
+        if (r) runModelConnectivityTest(b, r);
+      });
     }
 
     async function deleteWholeProvider(name) {
@@ -616,28 +3394,179 @@
       try {
         await apiReq('/api/restart', {});
         await refresh();
-        setLoading('restartBtn', false, { success: '已重启' });
+        setLoading('restartBtn', false, { success: true });
       } catch (e) {
         setLoading('restartBtn', false, { error: true });
       }
     }
+
+    /** 诊断项 id → 说明（与 server build_probe_report 检查项对应） */
+    function probeCheckExplain(id) {
+      const idStr = (id != null) ? String(id) : '';
+      if (idStr.startsWith('provider:')) {
+        return '按供应商探测：自定义供应商为 HTTP(S) 基地址是否响应；内置类供应商则检查本机网关端口与 auth 配置是否满足 probe 逻辑。';
+      }
+      const map = {
+        config_load: '能否成功读取磁盘上的 openclaw.json。失败则配置状态无法构建。',
+        config_validate: '执行 openclaw config validate：结构与 CLI 规则（诊断每次重新跑，不使用页面缓存）。',
+        gateway: '综合 OPENCLAW_GATEWAY_HEALTH_URL、systemctl、ss 端口等，判断网关是否被判定为在线。',
+        systemd: '本机 systemd 中网关服务单元是否为 active（仅当 systemctl 可用时出现此项）。',
+        port_18789: '用 ss 查看本机是否监听 18789；仅在网关已被判离线时出现，用于辅助排查进程是否启动。',
+        gateway_health_url: '请求环境变量 OPENCLAW_GATEWAY_HEALTH_URL 配置的地址（仅当已设置时出现）。',
+        sessions_json: 'sessions.json 是否存在且为合法 JSON。尚无会话文件时记为可选通过。',
+        primary_route: 'agents.defaults.model.primary 是否为非空的 provider/model 形式。',
+        fallbacks_route: '已填写的备用顺位是否均为带 / 的 ref；未配置备用不判失败。',
+        main_session_model: '网页主会话 agent:main:main 的生效模型。可与全局 primary 不同：在运行状态「写入会话」即会话内覆盖，属正常能力；本项仅作说明，不因与全局不同而判失败。',
+        openclaw_cli: 'PATH 中能否执行 openclaw --version；未安装时记为可选，不影响管理页只读能力。',
+        memory_health_report: '读取 OpenClaw 目录下 memory/health/last-health.json 的最近一次长期记忆定时检查结果；无文件为可选。',
+      };
+      return map[idStr] || '该项由服务端按当前环境动态生成。';
+    }
+
+    function probeDetailRowClass(c) {
+      if (!c.ok && !c.optional) return 'probe-row-fail';
+      if (c.ok && c.optional) return 'probe-row-warn';
+      return 'probe-row-ok';
+    }
+
+    function probeDetailStatusText(c) {
+      if (!c.ok && !c.optional) return '未通过';
+      if (c.ok && c.optional) return '通过（可选）';
+      return '通过';
+    }
+
+    function openProbeDetailModal() {
+      const data = lastProbeReport;
+      const body = document.getElementById('probeModalBody');
+      const modal = document.getElementById('probeDetailModal');
+      if (!data || !body || !modal) return;
+      let checks = data.checks;
+      if (!checks || !checks.length) {
+        const res = data.results || {};
+        const keys = Object.keys(res);
+        if (!keys.length) return;
+        checks = keys.map((name) => ({
+          id: 'provider:' + name,
+          label: '供应商 · ' + name,
+          ok: !!res[name],
+          detail: res[name] ? '可达' : '不可达/未就绪',
+        }));
+      }
+      const ts = data.timestamp || '';
+      const meta =
+        '<p class="probe-check-desc" style="margin-bottom:2px;">共 ' +
+        checks.length +
+        ' 项检查' +
+        (ts ? ' · 时间 ' + escHtml(ts) : '') +
+        '</p>';
+      const cards = checks.map((c) => {
+        const issues = Array.isArray(c.issues) && c.issues.length
+          ? '<ul class="probe-issues">' +
+            c.issues.map((i) => '<li>' + escHtml(String(i)) + '</li>').join('') +
+            '</ul>'
+          : '';
+        return (
+          '<article class="probe-check-card ' +
+          probeDetailRowClass(c) +
+          '">' +
+          '<div class="probe-check-top">' +
+          '<span class="probe-check-status">' +
+          escHtml(probeDetailStatusText(c)) +
+          '</span>' +
+          '<h3 class="probe-check-title">' +
+          escHtml(c.label || c.id || '—') +
+          '</h3>' +
+          '</div>' +
+          '<p class="probe-check-desc">' +
+          escHtml(probeCheckExplain(c.id)) +
+          '</p>' +
+          '<p class="probe-check-detail"><strong>结果：</strong>' +
+          escHtml(c.detail != null && String(c.detail) !== '' ? String(c.detail) : '—') +
+          '</p>' +
+          issues +
+          '</article>'
+        );
+      });
+      body.innerHTML = meta + cards.join('');
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeProbeDetailModal() {
+      const modal = document.getElementById('probeDetailModal');
+      if (!modal) return;
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeProbeDetailModal();
+    });
     
     async function runProbe() {
       setLoading('probeBtn', true);
       try {
         const d = await apiReq('/api/probe', {});
-        const abnormals = Object.entries(d.results).filter(([_, ok]) => !ok);
+        lastProbeReport = d;
+        const detailBtn = document.getElementById('probeDetailOpenBtn');
+        if (detailBtn) {
+          const canDetail = (d.checks && d.checks.length) || (d.results && Object.keys(d.results).length);
+          detailBtn.disabled = !canDetail;
+        }
         const summary = document.getElementById('probeSummary');
-        if (abnormals.length === 0) { summary.innerHTML = `<div class="status-dot"></div> 系统联通正常 <small style="font-weight:400;color:var(--claude-muted)">(${d.timestamp})</small>`; document.getElementById('probeAbnormal').innerHTML = ''; }
-        else { summary.innerHTML = `<div class="status-dot error"></div> 连接异常 <small style="font-weight:400;color:var(--claude-muted)">(${d.timestamp})</small>`; document.getElementById('probeAbnormal').innerHTML = abnormals.map(([p, _]) => `<div style="font-size:9px; color:var(--claude-danger); background:#fff5f5; border:1px solid #feb2b2; padding:2px 8px; border-radius:6px; font-weight:700;">${p}</div>`).join(''); }
+        const abn = document.getElementById('probeAbnormal');
+        const ts = d.timestamp || '';
+        const sub = (p, t) => ` <small style="font-weight:500;color:var(--claude-muted)">（${p}/${t} 项通过 · ${ts}）</small>`;
+        if (d.checks && d.checks.length) {
+          const s = d.summary || {};
+          const failed = d.checks.filter((c) => !c.ok && !c.optional);
+          const p = s.passed != null ? s.passed : d.checks.filter((c) => c.ok).length;
+          const t = s.total != null ? s.total : d.checks.length;
+          if (failed.length === 0) {
+            summary.innerHTML = '<div class="status-dot"></div> 诊断通过' + sub(p, t);
+            abn.innerHTML = '';
+          } else {
+            summary.innerHTML = '<div class="status-dot error"></div> 存在问题' + sub(p, t);
+            abn.innerHTML = failed.map((c) => (
+              '<div class="probe-pill" title="' + escAttr(c.detail || '') + '">' + escHtml(c.label) + '</div>'
+            )).join('');
+          }
+        } else {
+          const abnormals = Object.entries(d.results || {}).filter(([_, ok]) => !ok);
+          if (abnormals.length === 0) {
+            summary.innerHTML = `<div class="status-dot"></div> 系统联通正常 <small style="font-weight:400;color:var(--claude-muted)">(${ts})</small>`;
+            abn.innerHTML = '';
+          } else {
+            summary.innerHTML = `<div class="status-dot error"></div> 连接异常 <small style="font-weight:400;color:var(--claude-muted)">(${ts})</small>`;
+            abn.innerHTML = abnormals.map(([p]) => '<div class="probe-pill">' + escHtml(p) + '</div>').join('');
+          }
+        }
         setLoading('probeBtn', false);
       } catch(e) { setLoading('probeBtn', false, { error: true }); }
     }
     ['p', 'f1', 'f2'].forEach(initListeners);
-    document.getElementById('pModel').addEventListener('change', syncPrimaryThinkingFromSelection);
-    document.getElementById('pThinkingEnabled').addEventListener('change', syncPrimaryThinkingRow);
     document.getElementById('thinkingEnabled').addEventListener('change', syncThinkingRow);
     syncThinkingRow();
+    bindLibraryModelTestDelegate();
+    bindRuntimeSessionModelOverride();
+    (function initAppTopFixedPad() {
+      const shell = document.getElementById('appTopFixed');
+      if (!shell) return;
+      function setPad() {
+        document.documentElement.style.setProperty('--app-top-fixed-h', shell.offsetHeight + 'px');
+      }
+      setPad();
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(setPad).observe(shell);
+      }
+      window.addEventListener('resize', setPad);
+    })();
+    initGatewayLogPanel();
+    initBackupPanel();
+    initLocalMachineInfoPanel();
+    ensureOpenclawVersionPoll();
+    wireHomeUsageCardPoll();
+    ensureUsagePollStarted();
     refresh();
   </script>
 </body>
