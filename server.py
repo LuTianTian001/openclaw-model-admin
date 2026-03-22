@@ -1677,8 +1677,28 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        length = int(self.headers.get("Content-Length", "0"))
-        payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        raw = self.rfile.read(length) if length > 0 else b""
+        if length > 0:
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except json.JSONDecodeError as e:
+                self._send_json(
+                    {"ok": False, "error": f"请求体不是合法 JSON: {e}"},
+                    status=HTTPStatus.BAD_REQUEST,
+                )
+                return
+            except UnicodeDecodeError as e:
+                self._send_json(
+                    {"ok": False, "error": f"请求体须为 UTF-8 文本: {e}"},
+                    status=HTTPStatus.BAD_REQUEST,
+                )
+                return
+        else:
+            payload = {}
         try:
             if path == "/api/selection":
                 config = read_config()
