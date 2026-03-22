@@ -5,11 +5,17 @@ import os
 import shutil
 import subprocess
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # type: ignore
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
@@ -54,6 +60,73 @@ SERVICE_NAME = os.environ.get("OPENCLAW_GATEWAY_SERVICE", "openclaw-gateway.serv
 HOST = os.environ.get("OPENCLAW_MODEL_ADMIN_HOST", "0.0.0.0")
 PORT = int(os.environ.get("OPENCLAW_MODEL_ADMIN_PORT", "8765"))
 MAIN_SESSION_KEY = "agent:main:main"
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+# POST JSON 体上限（防异常大包占内存）；与监听地址/鉴权等网络策略无关
+MAX_POST_BODY_BYTES = max(64 * 1024, _env_int("OPENCLAW_MODEL_ADMIN_MAX_BODY_BYTES", 8 * 1024 * 1024))
+
+
+def _config_lock_disabled() -> bool:
+    return os.environ.get("OPENCLAW_MODEL_ADMIN_DISABLE_CONFIG_LOCK", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _config_flock_path() -> Path:
+    return CONFIG_PATH.parent / f"{CONFIG_PATH.name}.lock"
+
+
+@contextmanager
+def _config_lock_shared():
+    """跨线程串行化读 openclaw.json（与写互斥）；不阻止其他进程读 JSON。"""
+    if fcntl is None or _config_lock_disabled():
+        yield
+        return
+    p = _config_flock_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a+b") as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_SH)
+        try:
+            yield
+        finally:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def _config_lock_exclusive():
+    """保存配置整段持有，避免并发写导致 JSON 损坏或与读交错。"""
+    if fcntl is None or _config_lock_disabled():
+        yield
+        return
+    p = _config_flock_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a+b") as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+
+
+def _atomic_write_utf8(path: Path, text: str) -> None:
+    """同卷 tmp + replace，降低进程崩溃时留下半截 JSON 的概率。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
 
 BUILTIN_PROVIDERS = ["openai-codex", "github-copilot"]
 
@@ -128,11 +201,12 @@ def write_admin_prefs(**kwargs):
         if k == "reasoningDisplay" and v in ("on", "off"):
             cur[k] = v
     ADMIN_PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ADMIN_PREFS_PATH.write_text(json.dumps(cur, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _atomic_write_utf8(ADMIN_PREFS_PATH, json.dumps(cur, ensure_ascii=False, indent=2) + "\n")
     return cur
 
 def read_config():
-    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    with _config_lock_shared():
+        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
 def normalize_model_overrides(config):
     migrations = []
@@ -414,7 +488,7 @@ def write_config(config):
     # 强制清理：禁止内置供应商出现在 providers 列表中，确保其走系统内置 Auth 逻辑
     if "models" in config and "providers" in config["models"]:
         config["models"]["providers"] = {k: v for k, v in config["models"]["providers"].items() if k.strip() and k not in BUILTIN_PROVIDERS}
-    CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _atomic_write_utf8(CONFIG_PATH, json.dumps(config, ensure_ascii=False, indent=2) + "\n")
     return migrations
 
 def _cli_validate_cache_disabled() -> bool:
@@ -482,14 +556,15 @@ def validate_config_file(*, use_cache: bool = False):
 
 
 def save_config_with_validation(config):
-    previous_raw = CONFIG_PATH.read_text(encoding="utf-8") if CONFIG_PATH.exists() else "{}\n"
-    migrations = write_config(config)
-    validation = validate_config_file(use_cache=False)
-    if not validation["valid"]:
-        CONFIG_PATH.write_text(previous_raw, encoding="utf-8")
-        brief = "；".join(validation["issues"][:3]) if validation["issues"] else (validation["raw"] or "未知错误")
-        raise ValueError(f"配置校验失败，已自动回滚：{brief}")
-    _prime_cli_validate_cache(validation)
+    with _config_lock_exclusive():
+        previous_raw = CONFIG_PATH.read_text(encoding="utf-8") if CONFIG_PATH.exists() else "{}\n"
+        migrations = write_config(config)
+        validation = validate_config_file(use_cache=False)
+        if not validation["valid"]:
+            _atomic_write_utf8(CONFIG_PATH, previous_raw)
+            brief = "；".join(validation["issues"][:3]) if validation["issues"] else (validation["raw"] or "未知错误")
+            raise ValueError(f"配置校验失败，已自动回滚：{brief}")
+        _prime_cli_validate_cache(validation)
     sess_norm = normalize_sessions_provider_overrides_lowercase()
     return {"migrations": migrations, "validation": validation, "sessionProviderNormalize": sess_norm}
 
@@ -1565,7 +1640,25 @@ def build_state():
             m_entry = m_entry if isinstance(m_entry, dict) else {}
             m_params = m_entry.get("params", {}) if isinstance(m_entry.get("params"), dict) else {}
             th = _thinking_str_from_params_raw(m_params.get("thinking"))
-            model_items.append({"ref": ref, "provider": p_name, "id": m["id"], "name": m.get("name", m["id"]), "thinking": th, "inputs": m.get("input", []), "contextWindow": m.get("contextWindow"), "maxTokens": m.get("maxTokens"), "configured": True})
+            _m_api = m.get("api")
+            _p_api = p.get("api") if isinstance(p.get("api"), str) else ""
+            _eff_api = (
+                _m_api.strip() if isinstance(_m_api, str) and _m_api.strip() else None
+            ) or (_p_api.strip() if _p_api.strip() else None) or "openai-completions"
+            model_items.append(
+                {
+                    "ref": ref,
+                    "provider": p_name,
+                    "id": m["id"],
+                    "name": m.get("name", m["id"]),
+                    "thinking": th,
+                    "inputs": m.get("input", []),
+                    "contextWindow": m.get("contextWindow"),
+                    "maxTokens": m.get("maxTokens"),
+                    "api": _eff_api,
+                    "configured": True,
+                }
+            )
 
     # 核心：自动提取并保护内置供应商 (openai-codex)
     for ref in configured_models.keys():
@@ -1577,7 +1670,21 @@ def build_state():
             if not any(item["name"] == p_name for item in provider_items):
                 provider_items.append({"name": p_name, "baseUrl": f"({p_name})", "auth": "oauth", "api": "oauth", "modelCount": 1})
             th_in = _thinking_str_from_params_raw(params.get("thinking"))
-            model_items.append({"ref": ref, "provider": p_name, "id": m_id, "name": f"{m_id} (内置)", "thinking": th_in, "inputs": ["text"], "contextWindow": 1000000, "maxTokens": 128000, "configured": True, "elevated": params.get("elevated")})
+            model_items.append(
+                {
+                    "ref": ref,
+                    "provider": p_name,
+                    "id": m_id,
+                    "name": f"{m_id} (内置)",
+                    "thinking": th_in,
+                    "inputs": ["text"],
+                    "contextWindow": 1000000,
+                    "maxTokens": 128000,
+                    "api": "oauth",
+                    "configured": True,
+                    "elevated": params.get("elevated"),
+                }
+            )
             seen_refs.add(ref)
 
     config_issues = []
@@ -1681,6 +1788,14 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
+        if length < 0:
+            length = 0
+        if length > MAX_POST_BODY_BYTES:
+            self._send_json(
+                {"ok": False, "error": f"请求体过大（上限 {MAX_POST_BODY_BYTES} 字节）"},
+                status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+            )
+            return
         raw = self.rfile.read(length) if length > 0 else b""
         if length > 0:
             try:
@@ -1770,9 +1885,22 @@ class Handler(BaseHTTPRequestHandler):
                 if not m_id:
                     raise ValueError("缺少 modelId")
                 if p_name not in BUILTIN_PROVIDERS:
-                    p = config.setdefault("models", {}).setdefault("providers", {}).setdefault(p_name, {"models": []})
-                    p["baseUrl"], p["api"], p["auth"] = payload["baseUrl"], payload["api"], payload["auth"]
-                    if payload.get("apiKey"): p["apiKey"] = payload.get("apiKey")
+                    provs = config.setdefault("models", {}).setdefault("providers", {})
+                    if not isinstance(provs, dict):
+                        provs = {}
+                        config["models"]["providers"] = provs
+                    pk = resolve_provider_key_in_provs(provs, p_name)
+                    storage_key = pk if pk else p_name
+                    p = provs.setdefault(storage_key, {"models": []})
+                    # 供应商级 baseUrl/auth/密钥 与同块模型共享；接口类型 api 写入各模型 models[].api（OpenClaw：
+                    # model.api ?? provider.api），保存时不再覆盖 p["api"]，避免同供应商下一模型牵连另一模型。
+                    # 未写 per-model api 的条目仍回落到磁盘上已有的 provider.api（兼容旧配置）。
+                    auth_raw = payload.get("auth")
+                    auth_u = auth_raw.strip() if isinstance(auth_raw, str) else "api-key"
+                    p["baseUrl"] = payload.get("baseUrl") if isinstance(payload.get("baseUrl"), str) else ""
+                    p["auth"] = auth_u or "api-key"
+                    if payload.get("apiKey"):
+                        p["apiKey"] = payload.get("apiKey")
                     old_m = next((x for x in p.get("models", []) if isinstance(x, dict) and x.get("id") == m_id), None)
                     prev_reasoning = bool(old_m.get("reasoning")) if isinstance(old_m, dict) else None
                     if prev_reasoning is None:
@@ -1790,6 +1918,17 @@ class Handler(BaseHTTPRequestHandler):
                         "contextWindow": cw,
                         "maxTokens": mt,
                     }
+                    if isinstance(old_m, dict):
+                        for _k in ("headers", "compat", "cost"):
+                            if _k in old_m:
+                                new_m[_k] = copy.deepcopy(old_m[_k])
+                    api_raw = payload.get("api")
+                    if isinstance(api_raw, str) and api_raw.strip():
+                        new_m["api"] = api_raw.strip()
+                    elif isinstance(old_m, dict):
+                        _oa = old_m.get("api")
+                        if isinstance(_oa, str) and _oa.strip():
+                            new_m["api"] = _oa.strip()
                     p["models"] = [m for m in p["models"] if m["id"] != m_id] + [new_m]
                 ref = normalize_model_ref_provider_lower(f"{p_name}/{m_id}")
                 models_map = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("models", {})
@@ -1810,22 +1949,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif "params" in entry:
                     entry.pop("params", None)
                 meta_model: dict = {}
-                # 默认主模型可能是 openai-codex/gpt-5.4，而用户在改 ciii/gpt-5.4：二者 modelId 相同但 ref 不同，
-                # Telegram//status 跟的是 primary，只改 ciii 会表现为「改成 low 仍 off」。
-                if "thinkingEnabled" in payload:
-                    t_final = params.get("thinking", "off")
-                    primary_block = config.get("agents", {}).get("defaults", {}).get("model")
-                    primary_s = primary_block.get("primary") if isinstance(primary_block, dict) else None
-                    if (
-                        isinstance(primary_s, str)
-                        and "/" in primary_s.strip()
-                        and payload.get("mirrorThinkingToPrimary", True) is not False
-                    ):
-                        ps = primary_s.strip()
-                        _, pm_id = ps.split("/", 1)
-                        if pm_id.strip() == m_id.strip() and ps != ref:
-                            _set_agent_model_thinking(config, ps, t_final)
-                            meta_model["thinkingSyncedToPrimary"] = ps
+                # 不按「仅 modelId 相同」把思考写到主模型：不同供应商同名模型须相互独立。
                 save_meta = save_config_with_validation(config)
                 if save_meta.get("migrations"):
                     meta_model.setdefault("migrations", save_meta["migrations"])

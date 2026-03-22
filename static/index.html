@@ -186,7 +186,13 @@
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
             <div class="form-group"><label>上下文窗口</label><input id="contextWindow" type="number" value="200000"></div>
-            <div class="form-group"><label>最大输出</label><input id="maxTokens" type="number" value="8192"></div>
+            <div class="form-group"><label>最大输出</label><select id="maxTokens">
+              <option value="8192">8K</option>
+              <option value="16384">16K</option>
+              <option value="32768" selected>32K</option>
+              <option value="65536">64K</option>
+              <option value="131072">128K</option>
+            </select></div>
           </div>
           <button class="primary" id="addBtn" onclick="addModel()">保存并同步部署</button>
           <button class="ghost" id="cancelEditBtn" style="display:none; margin-top:8px;" onclick="cancelEdit()">取消编辑</button>
@@ -212,6 +218,24 @@
     }
     function escAttr(s) {
       return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    }
+    const MAX_TOKENS_CHOICES = [8192, 16384, 32768, 65536, 131072];
+    function snapMaxTokensToChoice(n) {
+      const v = parseInt(n, 10);
+      if (!Number.isFinite(v) || v <= 0) return 32768;
+      if (MAX_TOKENS_CHOICES.indexOf(v) !== -1) return v;
+      let best = MAX_TOKENS_CHOICES[0];
+      let bd = Math.abs(v - best);
+      for (let i = 1; i < MAX_TOKENS_CHOICES.length; i++) {
+        const x = MAX_TOKENS_CHOICES[i];
+        const d = Math.abs(v - x);
+        if (d < bd) { best = x; bd = d; }
+      }
+      return best;
+    }
+    function setMaxTokensUi(n) {
+      const el = document.getElementById('maxTokens');
+      if (el) el.value = String(snapMaxTokensToChoice(n));
     }
     function groupedModels() { const g = new Map(); (state?.models || []).forEach(m => { if(!g.has(m.provider)) g.set(m.provider, []); g.get(m.provider).push(m); }); return Array.from(g.entries()).map(([p, models]) => ({ provider:p, models })); }
     function populate(prefix, ref) {
@@ -495,7 +519,7 @@
       document.getElementById('thinkingValue').value = 'low';
       syncThinkingRow();
       document.getElementById('contextWindow').value = '200000';
-      document.getElementById('maxTokens').value = '8192';
+      setMaxTokensUi(32768);
       autoDetectApiType(document.getElementById('baseUrl').value);
       document.getElementById('addTabTitle').innerText = '同供应商新增 · ' + p.name;
       document.getElementById('cancelEditBtn').style.display = 'flex';
@@ -513,14 +537,17 @@
       document.getElementById('modelId').value = model.id;
       document.getElementById('modelName').value = model.name;
       document.getElementById('auth').value = provider ? (provider.auth === 'oauth' ? '' : provider.auth) : 'api-key';
-      document.getElementById('api').value = provider ? provider.api : 'openai-completions';
+      {
+        const ma = model.api != null && String(model.api).trim() !== '' ? String(model.api).trim() : '';
+        document.getElementById('api').value = ma || (provider && provider.api ? provider.api : 'openai-completions');
+      }
       const mt = (model.thinking || 'off').toString();
       const off = !mt || mt === 'off';
       document.getElementById('thinkingEnabled').value = off ? 'off' : 'on';
       document.getElementById('thinkingValue').value = off ? 'low' : mt;
       syncThinkingRow();
       document.getElementById('contextWindow').value = model.contextWindow || 200000;
-      document.getElementById('maxTokens').value = model.maxTokens || 8192;
+      setMaxTokensUi(model.maxTokens != null ? model.maxTokens : 32768);
       document.getElementById('addTabTitle').innerText = '编辑: ' + model.id;
       document.getElementById('cancelEditBtn').style.display = 'flex';
       document.querySelectorAll('.tab-btn')[2].click();
@@ -538,12 +565,13 @@
       syncThinkingRow();
       document.getElementById('addTabTitle').innerText = '接入新供应商';
       document.getElementById('cancelEditBtn').style.display = 'none';
+      setMaxTokensUi(32768);
     }
     
     async function addModel() {
       setLoading('addBtn', true);
       try {
-        const b = { provider: document.getElementById('provider').value, baseUrl: document.getElementById('baseUrl').value, apiKey: document.getElementById('apiKey').value, auth: document.getElementById('auth').value, api: document.getElementById('api').value, modelId: document.getElementById('modelId').value, modelName: document.getElementById('modelName').value, thinkingEnabled: document.getElementById('thinkingEnabled').value === 'on', thinkingValue: document.getElementById('thinkingValue').value, inputs: ['text'], contextWindow: parseInt(document.getElementById('contextWindow').value || 200000), maxTokens: parseInt(document.getElementById('maxTokens').value || 8192) };
+        const b = { provider: document.getElementById('provider').value, baseUrl: document.getElementById('baseUrl').value, apiKey: document.getElementById('apiKey').value, auth: document.getElementById('auth').value, api: document.getElementById('api').value, modelId: document.getElementById('modelId').value, modelName: document.getElementById('modelName').value, thinkingEnabled: document.getElementById('thinkingEnabled').value === 'on', thinkingValue: document.getElementById('thinkingValue').value, inputs: ['text'], contextWindow: parseInt(document.getElementById('contextWindow').value || 200000), maxTokens: parseInt(document.getElementById('maxTokens').value || 32768, 10) };
         await apiReq('/api/model', b);
         await apiReq('/api/restart', {});
         await refresh();
