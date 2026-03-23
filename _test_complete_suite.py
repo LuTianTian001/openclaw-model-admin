@@ -25,6 +25,7 @@ BASE = "http://127.0.0.1:8765"
 CFG_PATH = Path("/root/.openclaw/openclaw.json")
 FOOTER_DIR = Path("/root/.openclaw/extensions/telegram-footer")
 FRONTEND_FIVE = Path(__file__).resolve().parent / "_test_frontend_five.py"
+MODEL_DISPLAY_CHAIN = Path(__file__).resolve().parent / "_test_model_display_chain.py"
 
 KNOWN_THINK_TIERS = frozenset(
     {"off", "minimal", "low", "medium", "high", "xhigh", "adaptive"}
@@ -331,6 +332,19 @@ def main() -> None:
     if not ok:
         print(r.stdout)
         print(r.stderr, file=sys.stderr)
+
+    r_mc = subprocess.run([sys.executable, str(MODEL_DISPLAY_CHAIN)], capture_output=True, text=True)
+    ok_mc = r_mc.returncode == 0
+    results.append(
+        (
+            "模型显示 / modelKey 链路 _test_model_display_chain",
+            "PASS" if ok_mc else "FAIL",
+            (r_mc.stdout + r_mc.stderr)[-800:] if not ok_mc else "",
+        )
+    )
+    if not ok_mc:
+        print(r_mc.stdout)
+        print(r_mc.stderr, file=sys.stderr)
 
     cfg_base = read_cfg()
     prov, mid = "ciii", cfg_base["models"]["providers"]["ciii"]["models"][0]["id"]

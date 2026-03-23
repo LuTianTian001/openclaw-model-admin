@@ -28,7 +28,7 @@
 | GET | `/` | 浏览器 | — | `index.html` |
 | GET | `/api/state` | `refresh()` → `apiReq('/api/state')` | — | `{ ok, state }`；`state` 见第三节 |
 | GET | `/api/gateway/logs?lines=` | `loadGatewayLogs()` → `fetch` | `lines` 默认 200，范围约 50–2000 | `{ ok, text, lines[], lineCount, source?, service?, path?, error? }`；失败时 `ok:false` + `error` |
-| GET | `/api/usage/snapshot` | `loadUsageSnapshot()`：`refresh`、展开、点档、**轮询**；轮询每 tick **并行** `days=1,7,30`（与后台三槽一致），`usageCachedAt` 按档记录，仅**当前选中档**有变时 `renderUsageBody` | 同上；**`force`** 仍支持，UI 不用 | 前端 **`OCMA_USAGE_POLL_MS`** 默认 300000，须与 **`OPENCLAW_ADMIN_USAGE_BG_INTERVAL_SEC`**（默认 300）人工对齐。页载 `ensureUsagePollStarted`。`OPENCLAW_ADMIN_USAGE_BG_DISABLE=1` 关后台。另：`OPENCLAW_ADMIN_USAGE_GATEWAY=0`、`OPENCLAW_ADMIN_USAGE_GATEWAY_RETRIES` |
+| GET | `/api/usage/snapshot` | **双级槽** + **与网关控制台 `/usage`（如 :18789）对齐**：`sessions.usage` 使用本地日历 `startDate`/`endDate`、`mode=specific`+`utcOffset`（进程时区，可 `TZ` / `OPENCLAW_ADMIN_USAGE_UTC_OFFSET`）、`includeContextWeight:true`、`limit` 默认 **1000**（`OPENCLAW_ADMIN_USAGE_LIMIT`，与前端 `OCMA_USAGE_LIMIT` 一致）；`OPENCLAW_ADMIN_USAGE_DATE_MODE=utc` 恢复纯 UTC 日界。其余：`loadUsageSnapshot` 先 `usageReadCache`；轮询三档；**切换天数**无 `force`；**同步** 等才 `force=1` | query：`force` / `rebuild` / `days` / `limit` | `OCMA_USAGE_POLL_MS` 与 `OPENCLAW_ADMIN_USAGE_BG_INTERVAL_SEC` 默认 180s。 |
 | GET | `/api/backup/list` | `loadBackupListFromApi()` → `fetch` | — | `{ ok, backups[], backupDir, retentionDays, intervalSec }` |
 | GET | `/api/openclaw/version-check` | `fetchOpenclawVersionCheck()` → `fetch` | query：`force=0|1`；`1` 时跳过服务端 npm 缓存 | `{ ok, currentVersion?, currentError?, latestVersion?, latestError?, checkedAt, fromCache, compare, updateAvailable, isLatest }` |
 | POST | `/api/openclaw/update` | `runOpenclawUpdateClick()` → `apiReq` | 可选 `noRestart: true` | `{ ok, result?, error?, stderr?, exitCode? }`；成功时 `result` 为 CLI JSON；**无 `state`** |
@@ -99,7 +99,7 @@
 | 日期 | 变更摘要 |
 |------|----------|
 | 2026-03-23 | 初版：API 总表、state 字段、Tab/data-tab 约定、移除电报同步与 `webTelegramSync`、删除未使用 `/api/session-align` |
-| 2026-03-23 | `applyFullDeploy`：`/api/selection` → `pushAllSessionRowsFromUi`（按界面写各会话）→ `/api/restart`；顶栏「应用」与会话「写入会话」「跟随全局」（跟随先清本条再 refresh）共用 |
+| 2026-03-23 | `applyFullDeploy`：`/api/selection` → `pushAllSessionRowsFromUi`（按界面写各会话）→ `/api/restart`；顶栏「应用」与会话「跟随全局」（先清本条 override 再 refresh 后同上）共用 |
 | 2026-03-23 | `fetch-models` 预览全量远端 id；`sync-remote-models` 按勾选增删（未在列表中的本地模型不动）；`add-models` 仍可选 |
 | 2026-03-23 | 路由 Tab：`GET /api/gateway/logs` + `GET /api/usage/snapshot`；`OPENCLAW_GATEWAY_LOG_FILE` 兜底 |
 | 2026-03-23 | 首页折叠顺序（各 Tab 下方统一）：**使用情况** → **备份与恢复** → **网关日志** → **本机信息**（原网关/本机在路由 Tab 内，已移出） |

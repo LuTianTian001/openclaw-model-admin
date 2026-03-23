@@ -81,6 +81,10 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+# 与网关控制台 /usage（如 :18789）默认请求对齐：limit 1000、includeContextWeight、本地日历 + mode=specific+utcOffset
+ADMIN_USAGE_DEFAULT_LIMIT = max(1, min(2000, _env_int("OPENCLAW_ADMIN_USAGE_LIMIT", 1000)))
+
+
 # OpenClaw CLI 远端版本缓存（npm），默认 12 小时刷新；展开「本机信息」可 force=1 跳过缓存
 _OPENCLAW_LATEST_CACHE: dict = {"ts": 0.0, "latest": None, "error": None}
 _OPENCLAW_VERSION_CHECK_INTERVAL_SEC = max(60, _env_int("OPENCLAW_ADMIN_OPENCLAW_VERSION_CHECK_SEC", 43200))
@@ -171,6 +175,70 @@ def normalize_model_ref_provider_lower(ref: str) -> str:
     return f"{p}/{mid}"
 
 
+def split_model_ref_for_session_store(ref_norm: str) -> tuple[str, str] | None:
+    """
+    OpenClaw 网关解析 modelOverride 时：providerOverride 为空会用「当前渠道默认供应商」与 model 拼 modelKey。
+    若把整条 alibailian/qwen3.5-plus 只写在 modelOverride，会变成 vx001/alibailian/qwen3.5-plus 之类错误 key，
+    白名单校验失败后会清覆盖，表现为「应用后仍回落默认模型」。
+    """
+    s = (ref_norm or "").strip()
+    if "/" not in s:
+        return None
+    p, _, mid = s.partition("/")
+    p = normalize_provider_id(p.strip())
+    mid = mid.strip()
+    if not p or not mid:
+        return None
+    return p, mid
+
+
+def migrate_sessions_model_override_split_format() -> dict:
+    """将 sessions.json 中「仅 modelOverride 含 / 且未写 providerOverride」的条目拆成两段。"""
+    if not SESSION_STORE_PATH.exists():
+        return {"ok": False, "error": "sessions.json 不存在", "fixed": 0}
+    try:
+        store = json.loads(SESSION_STORE_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"ok": False, "error": f"读取失败: {e}", "fixed": 0}
+    if not isinstance(store, dict):
+        return {"ok": False, "error": "sessions 根非对象", "fixed": 0}
+    fixed = 0
+    for key, raw in store.items():
+        if key in ("global", "unknown") or not isinstance(raw, dict):
+            continue
+        mo = raw.get("modelOverride")
+        if not isinstance(mo, str) or "/" not in mo.strip():
+            continue
+        po = raw.get("providerOverride")
+        po_s = po.strip() if isinstance(po, str) else ""
+        if po_s:
+            continue
+        parts = split_model_ref_for_session_store(normalize_model_ref_provider_lower(mo.strip()))
+        if not parts:
+            continue
+        prov_id, model_id = parts
+        raw["providerOverride"] = prov_id
+        raw["modelOverride"] = model_id
+        fixed += 1
+    if fixed == 0:
+        return {"ok": True, "fixed": 0, "changed": False}
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = SESSION_STORE_PATH.parent / f"sessions.json.bak.splitmo-{stamp}"
+    try:
+        shutil.copy2(SESSION_STORE_PATH, backup_path)
+    except Exception as e:
+        return {"ok": False, "error": f"备份失败: {e}", "fixed": 0}
+    try:
+        SESSION_STORE_PATH.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except Exception as e:
+        try:
+            shutil.copy2(backup_path, SESSION_STORE_PATH)
+        except Exception:
+            pass
+        return {"ok": False, "error": f"写入失败: {e}", "fixed": 0}
+    return {"ok": True, "fixed": fixed, "changed": True, "backupPath": str(backup_path)}
+
+
 def resolve_provider_key_in_provs(provs: object, p_name: str) -> str | None:
     """在 models.providers 中解析供应商键（兼容尚未迁移完的大小写）。"""
     if not isinstance(provs, dict) or not isinstance(p_name, str):
@@ -198,7 +266,7 @@ ADMIN_PREFS_PATH = _path_from_env("OPENCLAW_MODEL_ADMIN_PREFS_PATH", ROOT / "adm
 
 def read_admin_prefs():
     """管理后台自用偏好（openclaw.json schema 不含会话级推理展示默认值）。"""
-    default = {"reasoningDisplay": "off"}
+    default = {"reasoningDisplay": "off", "uiModelRefs": None, "uiModelRefsMergeRouting": True}
     if not ADMIN_PREFS_PATH.exists():
         return dict(default)
     try:
@@ -208,7 +276,18 @@ def read_admin_prefs():
         rv = raw.get("reasoningDisplay", "off")
         if rv not in ("on", "off"):
             rv = "off"
-        return {"reasoningDisplay": rv}
+        ui_refs: list[str] | None = None
+        refs_raw = raw.get("uiModelRefs")
+        if isinstance(refs_raw, list):
+            cleaned: list[str] = []
+            for x in refs_raw:
+                if isinstance(x, str) and "/" in x.strip():
+                    cleaned.append(normalize_model_ref_provider_lower(x.strip()))
+        if cleaned:
+            ui_refs = list(dict.fromkeys(cleaned))
+        merge_rt = raw.get("uiModelRefsMergeRouting")
+        merge_routing = False if merge_rt is False else True
+        return {"reasoningDisplay": rv, "uiModelRefs": ui_refs, "uiModelRefsMergeRouting": merge_routing}
     except Exception:
         return dict(default)
 
@@ -217,6 +296,19 @@ def write_admin_prefs(**kwargs):
     for k, v in kwargs.items():
         if k == "reasoningDisplay" and v in ("on", "off"):
             cur[k] = v
+        elif k == "uiModelRefs":
+            if v is None:
+                cur["uiModelRefs"] = None
+            elif isinstance(v, list):
+                cleaned: list[str] = []
+                for x in v:
+                    if isinstance(x, str) and "/" in x.strip():
+                        cleaned.append(normalize_model_ref_provider_lower(x.strip()))
+                cur["uiModelRefs"] = list(dict.fromkeys(cleaned)) if cleaned else None
+        elif k == "uiModelRefsMergeRouting" and v is False:
+            cur["uiModelRefsMergeRouting"] = False
+        elif k == "uiModelRefsMergeRouting" and v is True:
+            cur["uiModelRefsMergeRouting"] = True
     ADMIN_PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write_utf8(ADMIN_PREFS_PATH, json.dumps(cur, ensure_ascii=False, indent=2) + "\n")
     return cur
@@ -702,41 +794,47 @@ def fetch_gateway_logs(*, lines: int = 200) -> dict:
     return {"ok": False, "service": unit, "error": err, "lines": [], "text": ""}
 
 
-def _usage_parse_int_field(v) -> int | None:
-    if isinstance(v, bool):
-        return None
-    if isinstance(v, int):
-        return v
-    if isinstance(v, float):
-        return int(v)
-    if isinstance(v, str) and v.strip().lstrip("-").isdigit():
-        try:
-            return int(v.strip())
-        except ValueError:
-            return None
-    return None
+def _usage_local_utc_offset_str() -> str:
+    """与网关控制台 usageTimeZone=local 一致：OpenClaw 期望 UTC±H[:MM]（东为正）。"""
+    now = datetime.now().astimezone()
+    off = now.utcoffset()
+    if off is None:
+        return "UTC+0"
+    total_minutes = int(off.total_seconds() // 60)
+    if total_minutes == 0:
+        return "UTC+0"
+    sign = "+" if total_minutes >= 0 else "-"
+    abs_m = abs(total_minutes)
+    hours, mins = abs_m // 60, abs_m % 60
+    if mins == 0:
+        return f"UTC{sign}{hours}"
+    return f"UTC{sign}{hours}:{mins:02d}"
 
 
-def _usage_session_effective_ref(raw: dict, primary: str) -> str:
-    po = raw.get("providerOverride") if isinstance(raw.get("providerOverride"), str) else ""
-    mo = raw.get("modelOverride") if isinstance(raw.get("modelOverride"), str) else ""
-    ps, ms = po.strip(), mo.strip()
-    if ps and ms:
-        return f"{ps}/{ms}"
-    if ms and "/" in ms:
-        return ms.strip()
-    if ms:
-        return ms.strip()
-    p = (primary or "").strip()
-    return p if p else "—"
-
-
-def _usage_utc_date_range(days: int) -> tuple[str, str]:
-    """与 ClawPanel usage 页一致：endDate=今天 UTC，startDate=向前 (days-1) 天。"""
+def _usage_gateway_calendar_range(days: int) -> tuple[str, str]:
+    """
+    返回传给 sessions.usage 的 startDate/endDate（YYYY-MM-DD）。
+    - 默认 local：与 18789 控制台「本地」日界一致（本机时区下的「今天」起向前 days 天，含首尾）。
+    - OPENCLAW_ADMIN_USAGE_DATE_MODE=utc 时：与旧版管理端一致，按 UTC 日历。
+    """
     d = max(1, min(366, int(days)))
-    end = datetime.now(timezone.utc).date()
+    mode = os.environ.get("OPENCLAW_ADMIN_USAGE_DATE_MODE", "local").strip().lower()
+    if mode in ("utc", "0", "false", "no", "off"):
+        end = datetime.now(timezone.utc).date()
+    else:
+        end = datetime.now().astimezone().date()
     start = end - timedelta(days=d - 1)
     return start.isoformat(), end.isoformat()
+
+
+def _usage_sessions_usage_extra_params() -> dict:
+    """控制台默认 local：mode=specific + utcOffset；utc 模式不传（网关按纯 UTC 解释日期）。"""
+    mode = os.environ.get("OPENCLAW_ADMIN_USAGE_DATE_MODE", "local").strip().lower()
+    if mode in ("utc", "0", "false", "no", "off"):
+        return {}
+    raw_off = os.environ.get("OPENCLAW_ADMIN_USAGE_UTC_OFFSET", "").strip()
+    utc_off = raw_off if raw_off else _usage_local_utc_offset_str()
+    return {"mode": "specific", "utcOffset": utc_off}
 
 
 def _iter_balanced_json_slices(text: str):
@@ -806,12 +904,22 @@ def _parse_sessions_usage_from_cli_streams(*, stdout: str, stderr: str) -> dict 
     return None
 
 
-def _gateway_call_sessions_usage_json(*, start_date: str, end_date: str, limit: int) -> tuple[dict | None, str | None]:
+def _gateway_call_sessions_usage_json(
+    *, start_date: str, end_date: str, limit: int, extra: dict | None = None
+) -> tuple[dict | None, str | None]:
     """
-    调用本机 Gateway 的 sessions.usage（与 ClawPanel WebSocket 请求同源）。
+    调用本机 Gateway 的 sessions.usage（与控制台 /usage 默认参数对齐：limit、includeContextWeight、本地日界等）。
     需网关在线；可选 OPENCLAW_GATEWAY_TOKEN / OPENCLAW_GATEWAY_PASSWORD / OPENCLAW_GATEWAY_URL。
     """
-    params = json.dumps({"startDate": start_date, "endDate": end_date, "limit": limit}, separators=(",", ":"))
+    body: dict = {
+        "startDate": start_date,
+        "endDate": end_date,
+        "limit": limit,
+        "includeContextWeight": True,
+    }
+    if extra:
+        body.update(extra)
+    params = json.dumps(body, separators=(",", ":"))
     timeout_sec = max(25, min(120, int(os.environ.get("OPENCLAW_ADMIN_USAGE_GATEWAY_TIMEOUT", "90"))))
     args: list[str] = [
         "openclaw",
@@ -867,12 +975,14 @@ def _usage_gateway_call_disabled() -> bool:
 
 
 def _gateway_call_sessions_usage_with_retries(
-    *, start_date: str, end_date: str, limit: int
+    *, start_date: str, end_date: str, limit: int, extra: dict | None = None
 ) -> tuple[dict | None, str | None]:
     n = max(1, min(4, int(os.environ.get("OPENCLAW_ADMIN_USAGE_GATEWAY_RETRIES", "2"))))
     last: str | None = None
     for i in range(n):
-        su, serr = _gateway_call_sessions_usage_json(start_date=start_date, end_date=end_date, limit=limit)
+        su, serr = _gateway_call_sessions_usage_json(
+            start_date=start_date, end_date=end_date, limit=limit, extra=extra
+        )
         if su is not None:
             return su, None
         last = serr
@@ -901,92 +1011,8 @@ def _zero_usage_totals_dict() -> dict:
     }
 
 
-def _build_local_store_sessions_usage_payload(
-    *,
-    start_date: str,
-    end_date: str,
-    limit: int,
-    usage_session_rows: list[dict],
-    usage_model_rows: list[dict],
-    token_total_sum: int,
-) -> dict:
-    """
-    网关不可用时，用 sessions.json 已有字段拼出与前端 ClawPanel 结构兼容的用量对象，
-    避免整页「Gateway 报错」；费用/消息/按日等为 0 或未统计。
-    """
-    lim = max(1, min(200, int(limit)))
-    empty = _zero_usage_totals_dict()
-    totals = {**empty, "totalTokens": max(0, int(token_total_sum))}
-    sessions: list[dict] = []
-    for row in (usage_session_rows or [])[:lim]:
-        key = (row.get("sessionKey") or row.get("sessionKeyShort") or "") or "—"
-        mref = row.get("modelRef") if isinstance(row.get("modelRef"), str) else ""
-        mref = mref.strip() or "—"
-        prov, mname = "", mref
-        if "/" in mref:
-            a, b = mref.split("/", 1)
-            prov, mname = a.strip(), b.strip() or mref
-        tt = row.get("totalTokens")
-        tti = int(tt) if isinstance(tt, int) and tt >= 0 else 0
-        usage_inner = {
-            "totalTokens": tti,
-            "totalCost": 0.0,
-            "messageCounts": {"total": 0, "user": 0, "assistant": 0, "errors": 0},
-            "modelUsage": (
-                [{"provider": prov or None, "model": mname or None, "tokens": tti, "cost": 0, "count": 1}]
-                if mname and mname != "—"
-                else []
-            ),
-        }
-        sessions.append(
-            {
-                "key": key,
-                "sessionId": None,
-                "agentId": None,
-                "channel": None,
-                "model": mref,
-                "modelProvider": prov or None,
-                "usage": usage_inner,
-            }
-        )
-    by_model: list[dict] = []
-    for mr in (usage_model_rows or [])[:20]:
-        ref = (mr.get("modelRef") if isinstance(mr.get("modelRef"), str) else "") or "未知"
-        prov2, mod2 = "", ref
-        if "/" in ref:
-            x, y = ref.split("/", 1)
-            prov2, mod2 = x.strip(), (y.strip() or ref)
-        tok = int(mr.get("totalTokens") or 0)
-        cnt = int(mr.get("sessionCount") or 0)
-        by_model.append(
-            {
-                "model": mod2,
-                "provider": prov2 or None,
-                "count": cnt,
-                "totals": {**empty, "totalTokens": tok, "totalCost": 0.0},
-            }
-        )
-    aggregates = {
-        "messages": {"total": 0, "user": 0, "assistant": 0, "errors": 0},
-        "tools": {"totalCalls": 0, "uniqueTools": 0, "tools": []},
-        "byModel": by_model,
-        "byProvider": [],
-        "byAgent": [],
-        "byChannel": [],
-        "daily": [],
-    }
-    return {
-        "updatedAt": int(time.time() * 1000),
-        "startDate": start_date,
-        "endDate": end_date,
-        "sessions": sessions,
-        "totals": totals,
-        "aggregates": aggregates,
-    }
-
-
 def _empty_sessions_usage_payload(*, start_date: str, end_date: str) -> dict:
-    """与 ClawPanel 同结构的空用量（仅界面占位，无第二套 UI）。"""
+    """与网关 sessions.usage 同构的空用量（占位，便于管理端单一渲染路径）。"""
     z = _zero_usage_totals_dict()
     return {
         "updatedAt": int(time.time() * 1000),
@@ -995,43 +1021,35 @@ def _empty_sessions_usage_payload(*, start_date: str, end_date: str) -> dict:
         "sessions": [],
         "totals": dict(z),
         "aggregates": {
-            "messages": {"total": 0, "user": 0, "assistant": 0, "errors": 0},
+            "messages": {
+                "total": 0,
+                "user": 0,
+                "assistant": 0,
+                "errors": 0,
+                "toolCalls": 0,
+                "toolResults": 0,
+            },
             "tools": {"totalCalls": 0, "uniqueTools": 0, "tools": []},
             "byModel": [],
             "byProvider": [],
             "byAgent": [],
             "byChannel": [],
             "daily": [],
+            "latency": {},
         },
     }
 
 
-def _sessions_usage_is_effectively_empty(su: object) -> bool:
+def build_usage_snapshot(*, usage_days: int = 7, usage_limit: int | None = None) -> dict:
     """
-    网关 sessions.usage 在选定日期内无 jsonl 活动时，常返回结构合法但 sessions=[]、Token 全 0。
-    此时若本地 sessions 仍有数据，应回退到 sessions.json 合成，避免界面「全空」。
-    """
-    if not isinstance(su, dict):
-        return True
-    sess = su.get("sessions")
-    n = len(sess) if isinstance(sess, list) else 0
-    if n > 0:
-        return False
-    tot = su.get("totals") if isinstance(su.get("totals"), dict) else {}
-    try:
-        tok = int(tot.get("totalTokens") or 0)
-    except (TypeError, ValueError):
-        tok = 0
-    return tok <= 0
-
-
-def build_usage_snapshot(*, usage_days: int = 7, usage_limit: int = 20) -> dict:
-    """
-    使用情况：始终返回 ClawPanel 同构的 sessionsUsage（网关优先；否则由 sessions.json 填充；再无则空壳）。
-    前端只渲染单一用量界面。
+    使用情况：sessionsUsage **仅**来自 Gateway `openclaw gateway call sessions.usage`。
+    日期/limit/utcOffset 与网关控制台 /usage 默认（本地日界、limit≈1000、includeContextWeight）对齐，见 ADMIN_USAGE_* 环境变量。
+    下方「本机资源」格仍为磁盘与 systemd 的只读事实，不参与用量统计。
+    网关不可用时返回同构空壳 + sessionsUsageError，**不做** sessions.json 估算。
     """
     usage_days = max(1, min(366, int(usage_days)))
-    usage_limit = max(1, min(200, int(usage_limit)))
+    ul = ADMIN_USAGE_DEFAULT_LIMIT if usage_limit is None else int(usage_limit)
+    usage_limit = max(1, min(2000, ul))
     out: dict = {
         "sessionsPath": str(SESSION_STORE_PATH),
         "configPath": str(CONFIG_PATH),
@@ -1066,17 +1084,13 @@ def build_usage_snapshot(*, usage_days: int = 7, usage_limit: int = 20) -> dict:
     except Exception:
         pass
 
-    session_rows: list[dict] = []
-    model_list: list[dict] = []
-    token_sum = 0
     sess_n = 0
     latest_ms: int | None = None
     store = _read_session_store()
     if isinstance(store, dict):
         sess_n = len(store)
         out["sessionsCount"] = sess_n
-        by_model: dict[str, dict] = {}
-        for sk, raw in store.items():
+        for _sk, raw in store.items():
             if not isinstance(raw, dict):
                 continue
             for key in ("updatedAt", "updated_at", "lastActivityAt", "lastSeenAt"):
@@ -1101,37 +1115,7 @@ def build_usage_snapshot(*, usage_days: int = 7, usage_limit: int = 20) -> dict:
                     else:
                         continue
                     latest_ms = ts_ms if latest_ms is None else max(latest_ms, ts_ms)
-
-            tt = _usage_parse_int_field(raw.get("totalTokens"))
-            if tt is not None and tt >= 0:
-                token_sum += tt
-            ctx = _usage_parse_int_field(raw.get("contextTokens"))
-            mref = _usage_session_effective_ref(raw, primary)
-            sks = sk if isinstance(sk, str) else str(sk)
-            session_rows.append(
-                {
-                    "sessionKey": sks,
-                    "sessionKeyShort": (sks[:64] + "…") if len(sks) > 64 else sks,
-                    "sessionLabel": _session_key_label(sks),
-                    "modelRef": mref,
-                    "totalTokens": tt,
-                    "contextTokens": ctx,
-                }
-            )
-            agg = by_model.setdefault(mref, {"totalTokens": 0, "sessionCount": 0})
-            agg["sessionCount"] += 1
-            if tt is not None and tt >= 0:
-                agg["totalTokens"] += tt
-
         out["latestSessionTouchMs"] = latest_ms
-        session_rows.sort(key=lambda r: (r.get("totalTokens") or 0), reverse=True)
-        session_rows = session_rows[:120]
-        model_list = [
-            {"modelRef": ref, "totalTokens": ag["totalTokens"], "sessionCount": ag["sessionCount"]}
-            for ref, ag in by_model.items()
-        ]
-        model_list.sort(key=lambda r: (r["totalTokens"], r["sessionCount"]), reverse=True)
-        model_list = model_list[:50]
 
     if SESSION_STORE_PATH.exists():
         try:
@@ -1156,29 +1140,24 @@ def build_usage_snapshot(*, usage_days: int = 7, usage_limit: int = 20) -> dict:
     )
     if st.get("ok") and (st.get("stdout") or "").strip():
         out["gatewayActiveSince"] = (st.get("stdout") or "").strip()
-    sd, ed = _usage_utc_date_range(usage_days)
+    sd, ed = _usage_gateway_calendar_range(usage_days)
+    usage_x = _usage_sessions_usage_extra_params()
+    gw_err: str | None = None
     if _usage_gateway_call_disabled():
         su = None
+        gw_err = "网关用量已禁用（环境变量 OPENCLAW_ADMIN_USAGE_GATEWAY=0）"
     else:
-        su, _serr = _gateway_call_sessions_usage_with_retries(
-            start_date=sd, end_date=ed, limit=usage_limit
+        su, gw_err = _gateway_call_sessions_usage_with_retries(
+            start_date=sd, end_date=ed, limit=usage_limit, extra=usage_x if usage_x else None
         )
-    local_ok = sess_n > 0 or bool(session_rows)
-    if su is not None and not _sessions_usage_is_effectively_empty(su):
+    if su is not None:
         out["sessionsUsage"] = su
-    elif local_ok:
-        out["sessionsUsage"] = _build_local_store_sessions_usage_payload(
-            start_date=sd,
-            end_date=ed,
-            limit=usage_limit,
-            usage_session_rows=session_rows,
-            usage_model_rows=model_list,
-            token_total_sum=token_sum,
-        )
-    elif su is not None:
-        out["sessionsUsage"] = su
+        out["sessionsUsageSource"] = "gateway"
     else:
         out["sessionsUsage"] = _empty_sessions_usage_payload(start_date=sd, end_date=ed)
+        out["sessionsUsageSource"] = "empty"
+        msg = (gw_err or "").strip()
+        out["sessionsUsageError"] = msg[:2000] if msg else "未能获取网关 sessions.usage（请确认网关在线且 openclaw gateway call 可用）"
 
     out["usageDays"] = usage_days
     out["usageLimit"] = usage_limit
@@ -1186,7 +1165,7 @@ def build_usage_snapshot(*, usage_days: int = 7, usage_limit: int = 20) -> dict:
 
 
 # —— 用量快照：按 (days,limit) 多槽内存缓存（与 UI「今天/7天/30天」三档对应）+ 后台定时刷新 ——
-_ADMIN_USAGE_BG_INTERVAL_SEC = max(60, _env_int("OPENCLAW_ADMIN_USAGE_BG_INTERVAL_SEC", 300))
+_ADMIN_USAGE_BG_INTERVAL_SEC = max(60, _env_int("OPENCLAW_ADMIN_USAGE_BG_INTERVAL_SEC", 180))
 _ADMIN_USAGE_CACHE_LOCK = threading.Lock()
 # (days, limit) -> {"usage": dict, "updatedAtMs": int}
 _ADMIN_USAGE_CACHES: dict[tuple[int, int], dict] = {}
@@ -1194,13 +1173,13 @@ _ADMIN_USAGE_CACHES: dict[tuple[int, int], dict] = {}
 
 def _usage_norm_days_limit(days: int, limit: int) -> tuple[int, int]:
     d = max(1, min(366, int(days)))
-    lim = max(1, min(200, int(limit)))
+    lim = max(1, min(2000, int(limit)))
     return (d, lim)
 
 
 def _usage_background_preset_keys() -> list[tuple[int, int]]:
-    """与管理端用量 Tab 一致：今天=1、7 天、30 天，limit=20。"""
-    lim = 20
+    """与管理端用量 Tab 一致：今天=1、7 天、30 天；limit 与 OPENCLAW_ADMIN_USAGE_LIMIT 默认一致（对齐控制台）。"""
+    lim = ADMIN_USAGE_DEFAULT_LIMIT
     return [(1, lim), (7, lim), (30, lim)]
 
 
@@ -1482,18 +1461,60 @@ def _session_key_label(session_key: str) -> str:
 
 
 def _effective_model_ref_for_session(raw: dict, primary: str) -> tuple:
-    """返回 (model_ref, via_override)。"""
+    """
+    返回 (管理端/与配置对齐的展示 ref, via_override)。
+    任意含 provider/model 的字符串经 normalize_model_ref_provider_lower，与 openclaw.json、模型库 ref 一致，避免大小写/供应商段漂移导致下拉对不上。
+    """
     po = raw.get("providerOverride") if isinstance(raw.get("providerOverride"), str) else ""
     mo = raw.get("modelOverride") if isinstance(raw.get("modelOverride"), str) else ""
     po, mo = po.strip(), mo.strip()
+    via = False
+    ref = ""
     if po and mo:
-        return f"{po}/{mo}", True
-    if mo and "/" in mo:
-        return mo, True
-    if mo:
-        return mo, True
-    ref = (primary or "").strip()
-    return (ref if ref else "—", False)
+        ref = f"{po}/{mo}"
+        via = True
+    elif mo and "/" in mo:
+        ref = mo
+        via = True
+    elif mo:
+        ref = mo
+        via = True
+    else:
+        ref = (primary or "").strip()
+    if not ref:
+        return ("—", False)
+    if ref != "—" and "/" in ref:
+        ref = normalize_model_ref_provider_lower(ref)
+    return (ref, via)
+
+
+def _openclaw_model_key_from_session_override(
+    raw: dict, channel_default_provider: str
+) -> str | None:
+    """
+    与 OpenClaw 网关一致：resolveModelOverrideFromEntry 后
+    modelKey(overrideProvider, overrideModel)，其中 overrideProvider = providerOverride 或渠道默认供应商。
+    用于核对 agents.defaults.models 白名单；返回规范化 ref，无覆盖时 None。
+    """
+    if not isinstance(raw, dict):
+        return None
+    po = raw.get("providerOverride") if isinstance(raw.get("providerOverride"), str) else ""
+    mo = raw.get("modelOverride") if isinstance(raw.get("modelOverride"), str) else ""
+    po, mo = po.strip(), mo.strip()
+    if not mo:
+        return None
+    dp = (channel_default_provider or "").strip()
+    pid = po if po else dp
+    if not pid:
+        return normalize_model_ref_provider_lower(mo) if "/" in mo else None
+    mid = mo.strip()
+    if mid.lower().startswith(f"{pid.lower()}/"):
+        combined = mid
+    else:
+        combined = f"{pid}/{mid}"
+    if "/" not in combined:
+        return None
+    return normalize_model_ref_provider_lower(combined)
 
 
 def _primary_ref_from_config(config: dict) -> str:
@@ -1746,8 +1767,9 @@ def set_session_model_override(
     model_ref: str | None = None,
 ) -> dict:
     """
-    写入 sessions.json：设置或清除单条会话的 modelOverride（与 OpenClaw 全路径 ref 一致），并去掉 providerOverride。
-    clear=True 时移除覆盖，会话回落到全局路由 primary。
+    写入 sessions.json：设置或清除会话模型覆盖。
+    须同时写入 providerOverride + modelOverride（仅模型 id）；不得把整条 ref 只塞进 modelOverride（网关会拼错 modelKey 并清覆盖）。
+    clear=True 时移除两段覆盖，会话回落到全局路由 primary。
     """
     sk = (session_key or "").strip()
     if not sk or sk in ("global", "unknown"):
@@ -1779,13 +1801,40 @@ def set_session_model_override(
             raw.pop("modelOverride", None)
             raw.pop("providerOverride", None)
             mode = "cleared"
+            # 与网关跑完一轮后写入的摘要字段对齐，避免 /status、只读 model 字段的工具仍显示旧模型
+            try:
+                cfg = read_config()
+                primary = (
+                    (cfg.get("agents") or {}).get("defaults", {}).get("model", {}).get("primary") or ""
+                )
+                primary = primary.strip() if isinstance(primary, str) else ""
+                if primary and "/" in primary:
+                    ref_n = normalize_model_ref_provider_lower(primary)
+                    sp = split_model_ref_for_session_store(ref_n)
+                    if sp:
+                        raw["modelProvider"], raw["model"] = sp[0], sp[1]
+                    else:
+                        raw.pop("model", None)
+                        raw.pop("modelProvider", None)
+                else:
+                    raw.pop("model", None)
+                    raw.pop("modelProvider", None)
+            except Exception:
+                raw.pop("model", None)
+                raw.pop("modelProvider", None)
         else:
             ref_in = model_ref.strip() if isinstance(model_ref, str) else ""
             if not ref_in or "/" not in ref_in:
                 return {"ok": False, "error": "modelRef 须为非空的 provider/model"}
             ref_n = normalize_model_ref_provider_lower(ref_in)
-            raw["modelOverride"] = ref_n
-            raw.pop("providerOverride", None)
+            split = split_model_ref_for_session_store(ref_n)
+            if not split:
+                return {"ok": False, "error": "modelRef 须为非空的 provider/model"}
+            prov_id, model_id = split
+            raw["providerOverride"] = prov_id
+            raw["modelOverride"] = model_id
+            raw["modelProvider"] = prov_id
+            raw["model"] = model_id
             mode = "set"
         raw["updatedAt"] = int(time.time() * 1000)
         SESSION_STORE_PATH.write_text(json.dumps(store, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1802,6 +1851,7 @@ def set_session_model_override(
         "ok": True,
         "sessionKey": sk,
         "mode": mode,
+        "providerOverride": None if clear else raw.get("providerOverride"),
         "modelOverride": None if clear else raw.get("modelOverride"),
         "backupPath": str(backup_path),
         "sessionContextSync": ctx_sync,
@@ -2973,6 +3023,27 @@ def fetch_provider_remote_models_preview(provider_raw: str) -> dict:
     }
 
 
+def _ensure_agents_defaults_model_entry(config: dict, provider_key: str, model_id: str) -> None:
+    """
+    电报 /model、会话覆盖白名单等以 agents.defaults.models 为准。
+    仅写入 models.providers.*.models 而未登记此处时，渠道里看不到新模型。
+    """
+    pk = (provider_key or "").strip()
+    mid = (model_id or "").strip()
+    if not pk or not mid:
+        return
+    ref = normalize_model_ref_provider_lower(f"{pk}/{mid}")
+    am = config.setdefault("agents", {}).setdefault("defaults", {}).setdefault("models", {})
+    if not isinstance(am, dict):
+        am = {}
+        config["agents"]["defaults"]["models"] = am
+    cur = am.get(ref)
+    if cur is None:
+        am[ref] = {}
+    elif not isinstance(cur, dict):
+        am[ref] = {}
+
+
 def _purge_agents_defaults_model_ref(config: dict, p_name: str, m_id: str) -> None:
     """从 agents.defaults.models 中移除 provider/model 条目（与 /api/model/delete 一致）。"""
     mid = (m_id or "").strip()
@@ -3128,6 +3199,9 @@ def sync_provider_remote_model_selection(provider_raw: str, remote_ids_raw: obje
     provider["models"] = new_models
     if not new_models:
         del provs[pk]
+    else:
+        for mid in final_order:
+            _ensure_agents_defaults_model_entry(config, pk, mid)
 
     save_meta = save_config_with_validation(config)
     ctx = sync_all_sessions_context_tokens_from_config(config)
@@ -3217,6 +3291,7 @@ def add_models_to_provider_by_ids(provider_raw: str, ids_raw: object) -> dict:
         models_list.append(new_m)
         existing.add(mid)
         added.append(mid)
+        _ensure_agents_defaults_model_entry(config, pk, mid)
     if not added:
         return {
             "provider": pk,
@@ -3418,6 +3493,89 @@ def run_openclaw_builtin_update(*, no_restart: bool) -> dict:
     }
 
 
+def _apply_ui_model_ref_filter(
+    model_items: list,
+    provider_items: list,
+    agents: dict,
+    prefs: dict,
+) -> tuple[list, list]:
+    """
+    管理端下拉 / 模型库卡片：仅展示 admin-prefs.json 的 uiModelRefs（顺序保留），
+    并自动并入当前全局 primary / fallbacks（避免路由指向「不在列表里」的 ref）。
+    未配置 uiModelRefs 时不改动。
+    """
+    allow = prefs.get("uiModelRefs")
+    if not isinstance(allow, list) or len(allow) == 0:
+        return model_items, provider_items
+
+    by_norm: dict[str, dict] = {}
+    for m in model_items:
+        if not isinstance(m, dict) or not isinstance(m.get("ref"), str):
+            continue
+        k = normalize_model_ref_provider_lower(m["ref"])
+        by_norm[k] = m
+
+    order: list[str] = []
+    seen: set[str] = set()
+
+    def push_key(k: str) -> None:
+        if not k or k in seen:
+            return
+        seen.add(k)
+        order.append(k)
+
+    for r in allow:
+        if isinstance(r, str) and "/" in r.strip():
+            push_key(normalize_model_ref_provider_lower(r.strip()))
+
+    if prefs.get("uiModelRefsMergeRouting", True):
+        amb = agents.get("model", {})
+        amb = amb if isinstance(amb, dict) else {}
+        pr = amb.get("primary", "")
+        if isinstance(pr, str) and "/" in pr.strip():
+            push_key(normalize_model_ref_provider_lower(pr.strip()))
+        for fb in amb.get("fallbacks", []) or []:
+            if isinstance(fb, str) and "/" in fb.strip():
+                push_key(normalize_model_ref_provider_lower(fb.strip()))
+
+    filtered = [by_norm[k] for k in order if k in by_norm]
+    if not filtered:
+        return model_items, provider_items
+
+    prov_by_name = {
+        p["name"]: p for p in provider_items if isinstance(p, dict) and isinstance(p.get("name"), str)
+    }
+    counts: dict[str, int] = {}
+    prov_order: list[str] = []
+    for m in filtered:
+        pn = m.get("provider")
+        if not isinstance(pn, str) or not pn:
+            continue
+        if pn not in counts:
+            counts[pn] = 0
+            prov_order.append(pn)
+        counts[pn] += 1
+    new_provider_items: list[dict] = []
+    for pn in prov_order:
+        base = prov_by_name.get(pn)
+        if base:
+            row = dict(base)
+            row["modelCount"] = counts[pn]
+            new_provider_items.append(row)
+        else:
+            new_provider_items.append(
+                {
+                    "name": pn,
+                    "baseUrl": f"({pn})",
+                    "auth": "oauth",
+                    "api": "oauth",
+                    "modelCount": counts[pn],
+                }
+            )
+    new_provider_items.sort(key=lambda x: x["name"])
+    return filtered, new_provider_items
+
+
 def build_state():
     try:
         config = read_config()
@@ -3537,6 +3695,15 @@ def build_state():
     if config_issues:
         config_issues = list(dict.fromkeys(config_issues))
 
+    # 在读 sessions 快照之前修正「整条 ref 只写在 modelOverride」的遗留格式。
+    # 否则网关用渠道 defaultProvider 拼 modelKey 会错，白名单校验失败后在下一轮/心跳清掉覆盖，
+    # 表现为「刷新网关或发一条消息就变回默认」，与 /status、管理端展示也不一致。
+    auto_split_migrate: dict = {"ok": True, "fixed": 0, "changed": False}
+    try:
+        auto_split_migrate = migrate_sessions_model_override_split_format()
+    except Exception as e:
+        auto_split_migrate = {"ok": False, "error": str(e), "fixed": 0, "changed": False}
+
     session_snap = _read_session_store()
     gateway_active = probe_gateway_active()
     active_chat = resolve_active_chat_session(config, session_snap)
@@ -3544,10 +3711,40 @@ def build_state():
     main_route = main_session_route_drift(config, session_snap)
 
     alignment_hints = []
+    fix_n = int(auto_split_migrate.get("fixed") or 0)
+    if fix_n > 0 and auto_split_migrate.get("changed") is True:
+        alignment_hints.append(
+            f"已自动修正 {fix_n} 条会话的模型覆盖：写入 providerOverride + modelOverride（仅模型 id）。"
+            "若整条 ref 只存在 modelOverride，网关会拼错 modelKey 并在下一条/心跳后清除覆盖，看起来像「变回默认」；"
+            "电报 /status 与真实路由也会与磁盘不一致。"
+        )
     if isinstance(configured_models, dict) and "/" in configured_models:
         alignment_hints.append(
             "提示：agents.defaults.models 存在键 “/”，一般应使用 provider/model 形式的 ref；若行为异常可考虑删除该条。"
         )
+
+    prefs = read_admin_prefs()
+    if (
+        isinstance(prefs.get("uiModelRefs"), list)
+        and len(prefs["uiModelRefs"]) > 0
+        and prefs.get("uiModelRefsMergeRouting") is False
+    ):
+        allow_set = set(prefs["uiModelRefs"])
+        pr = (agents.get("model") or {}).get("primary", "")
+        if isinstance(pr, str) and "/" in pr.strip():
+            pk = normalize_model_ref_provider_lower(pr.strip())
+            if pk not in allow_set:
+                alignment_hints.append(
+                    "提示：uiModelRefs 为严格模式（uiModelRefsMergeRouting: false）且全局 primary "
+                    "不在白名单内；路由下拉里看不到当前 primary。请把该 ref 加入 uiModelRefs，"
+                    "或改为白名单中的模型作 primary，或改回 uiModelRefsMergeRouting: true。"
+                )
+    model_items, provider_items = _apply_ui_model_ref_filter(
+        model_items, provider_items, agents, prefs
+    )
+    if not prefs.get("uiModelRefs"):
+        model_items = sorted(model_items, key=lambda x: x["ref"])
+        provider_items = sorted(provider_items, key=lambda x: x["name"])
 
     alerts = []
     if not gateway_active:
@@ -3555,13 +3752,17 @@ def build_state():
     if config_issues:
         alerts.append({"level": "error", "msg": f"配置校验失败（{len(config_issues)} 项）"})
     
-    prefs = read_admin_prefs()
     oc_cli_ver, _oc_cli_err = _get_openclaw_cli_version_cached()
+    ui_allow = prefs.get("uiModelRefs") or []
     return {
         "panelMeta": {
             "version": PANEL_META_VERSION,
             "sessionsPath": str(SESSION_STORE_PATH),
             "openclawCliVersion": oc_cli_ver,
+            "uiModelPickerActive": bool(ui_allow),
+            "uiModelPickerAllowCount": len(ui_allow),
+            "uiModelPickerShownCount": len(model_items),
+            "sessionModelOverrideAutoFixed": fix_n,
         },
         "configPath": str(CONFIG_PATH),
         "primary": agents.get("model", {}).get("primary", ""),
@@ -3575,8 +3776,8 @@ def build_state():
         "activeChatSession": active_chat,
         "sessionPreviews": session_previews,
         "alignmentHints": alignment_hints,
-        "providers": sorted(provider_items, key=lambda x: x["name"]),
-        "models": sorted(model_items, key=lambda x: x["ref"]),
+        "providers": provider_items,
+        "models": model_items,
         "alerts": alerts
     }
 
@@ -3898,9 +4099,9 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     days = 7
                 try:
-                    lim = int((q.get("limit") or ["20"])[0])
+                    lim = int((q.get("limit") or [str(ADMIN_USAGE_DEFAULT_LIMIT)])[0])
                 except (TypeError, ValueError):
-                    lim = 20
+                    lim = ADMIN_USAGE_DEFAULT_LIMIT
                 raw_force = (q.get("force") or q.get("rebuild") or ["0"])[0]
                 force = str(raw_force).strip().lower() in ("1", "true", "yes", "on")
                 self._send_json(usage_snapshot_http_payload(days=days, limit=lim, force=force), no_cache=True)
@@ -4271,6 +4472,11 @@ class Handler(BaseHTTPRequestHandler):
                 meta_r = restore_admin_backup(bid)
                 self._send_json({"ok": True, "state": build_state(), "meta": {"adminRestore": meta_r}})
             elif path == "/api/restart":
+                mig_meta: dict = {"ok": True, "fixed": 0}
+                try:
+                    mig_meta = migrate_sessions_model_override_split_format()
+                except Exception as e:
+                    mig_meta = {"ok": False, "error": str(e), "fixed": 0}
                 custom = os.environ.get("OPENCLAW_GATEWAY_RESTART_COMMAND", "").strip()
                 if custom:
                     restart = run_command(["/bin/sh", "-lc", custom], timeout=90)
@@ -4295,7 +4501,13 @@ class Handler(BaseHTTPRequestHandler):
                     active = run_command(["systemctl", "is-active", SERVICE_NAME], timeout=5).get("stdout")
                     if active != "active":
                         raise RuntimeError(f"重启后服务状态异常: {active or 'unknown'}")
-                self._send_json({"ok": True, "state": build_state()})
+                self._send_json(
+                    {
+                        "ok": True,
+                        "state": build_state(),
+                        "meta": {"sessionOverrideMigration": mig_meta},
+                    }
+                )
             else:
                 self.send_response(HTTPStatus.NOT_FOUND)
                 self.end_headers()

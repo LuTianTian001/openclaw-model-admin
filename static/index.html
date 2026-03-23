@@ -447,15 +447,12 @@
     }
     /* 与模型库「测速 / 复用」同款 ghost：细边框 + 白底，不搞强调块 */
     .runtime-sess-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
       padding: 12px 14px;
       background: color-mix(in srgb, var(--claude-bg-elevated) 55%, var(--claude-surface));
       border-top: 1px solid color-mix(in srgb, var(--claude-border) 60%, transparent);
-    }
-    @media (max-width: 360px) {
-      .runtime-sess-actions { grid-template-columns: 1fr; }
     }
     button.runtime-sess-btn {
       height: auto;
@@ -466,6 +463,14 @@
       width: 100%;
       justify-content: center;
       line-height: 1.35;
+    }
+    button.runtime-sess-btn.runtime-sess-btn-follow {
+      width: min(100%, 380px);
+      min-width: 260px;
+      max-width: 100%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     .runtime-sess-actions button.runtime-sess-btn.ghost {
       border: 1px solid var(--claude-border-strong);
@@ -971,57 +976,19 @@
       margin-bottom: 8px;
       line-height: 1.4;
     }
-    /* 使用情况：与本机信息同款折叠 */
+    /* 使用情况 */
     .home-usage-details.collapsible.page-meta-bottom {
       margin-top: 24px;
       margin-bottom: 12px;
     }
-    .home-usage-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-    }
-    @media (max-width: 720px) {
-      .home-usage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    }
-    @media (max-width: 360px) {
-      .home-usage-grid { grid-template-columns: 1fr; }
-    }
-    .home-usage-cell {
-      background: color-mix(in srgb, var(--claude-bg-elevated) 65%, var(--claude-surface));
-      border: 1px solid var(--claude-border);
-      border-radius: var(--radius-sm);
-      padding: 12px 12px;
-      min-width: 0;
-    }
-    .home-usage-k {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--claude-muted);
-      margin-bottom: 6px;
-      line-height: 1.3;
-    }
-    .home-usage-v {
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1.35;
-      word-break: break-word;
-      font-variant-numeric: tabular-nums;
-    }
-    .home-usage-v--sub {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--claude-muted);
-      margin-top: 4px;
-    }
     .usage-root {
-      display: grid;
+      display: flex;
+      flex-direction: column;
       gap: 18px;
-    }
-    .usage-top-grid.home-usage-grid {
-      margin-bottom: 0;
+      width: 100%;
+      max-width: min(920px, 100%);
+      margin-left: auto;
+      margin-right: auto;
     }
     .usage-section-title {
       font-size: 11px;
@@ -1073,200 +1040,435 @@
       line-height: 1.45;
       margin: 0;
     }
-    .usage-admin-toolbar {
+    .usage-panel-head {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 14px;
-    }
-    .usage-admin-toolbar .ghost,
-    .usage-admin-toolbar .primary {
-      height: 32px;
-      padding: 0 12px;
-      font-size: 12px;
-      font-weight: 600;
-      border-radius: var(--radius-sm);
-    }
-    .usage-cp-desc {
-      font-size: 12px;
-      color: var(--claude-muted);
-      margin: -6px 0 6px 0;
-      line-height: 1.45;
-    }
-    .usage-cache-hint {
-      font-size: 11px;
-      color: var(--claude-muted);
-      margin: 0 0 14px 0;
-      line-height: 1.45;
-      opacity: 0.92;
-    }
-    .usage-cp-stat-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      flex-direction: column;
+      align-items: stretch;
       gap: 10px;
-      margin-bottom: 16px;
+      width: 100%;
+      padding-bottom: 2px;
     }
-    .usage-cp-stat-card {
-      background: color-mix(in srgb, var(--claude-bg-elevated) 65%, var(--claude-surface));
-      border: 1px solid var(--claude-border);
-      border-radius: var(--radius-sm);
-      padding: 12px;
-      min-width: 0;
+    .usage-range-wrap {
+      display: flex;
+      justify-content: center;
+      width: 100%;
     }
-    .usage-cp-stat-label {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--claude-muted);
-      margin-bottom: 6px;
+    .usage-range-nav.tab-nav {
+      margin-bottom: 0;
+      max-width: 420px;
+      width: 100%;
     }
-    .usage-cp-stat-value {
-      font-size: 18px;
-      font-weight: 800;
-      font-variant-numeric: tabular-nums;
-      line-height: 1.2;
-      word-break: break-word;
+    .usage-range-nav .tab-btn {
+      padding: 9px 10px;
+      font-size: 13px;
     }
-    .usage-cp-stat-meta {
+    .usage-panel-meta {
       font-size: 11px;
+      line-height: 1.5;
       color: var(--claude-muted);
-      margin-top: 6px;
+      font-weight: 500;
+      text-align: left;
+      width: 100%;
+      margin: 0;
+      padding: 0 2px;
+    }
+    .usage-panel-meta--note {
+      color: color-mix(in srgb, var(--claude-warning, #b45309) 78%, var(--claude-muted));
+      font-size: 11px;
+      text-align: left;
+    }
+    .ocma-usage-loading-bar {
+      font-size: var(--text-micro);
       font-weight: 600;
+      color: var(--claude-muted);
+      margin: 0 auto;
+      max-width: 36em;
+      padding: 8px 11px;
+      border-radius: var(--radius-sm);
+      border: 1px dashed color-mix(in srgb, var(--claude-accent) 38%, var(--claude-border));
+      background: var(--claude-accent-soft);
+      line-height: var(--lh-caption);
+      text-align: center;
     }
-    .usage-cp-tops-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 12px;
-      margin-bottom: 16px;
-    }
-    .usage-cp-top-card {
-      border: 1px solid var(--claude-border);
+    .usage-gateway-error {
+      font-size: var(--text-caption);
+      color: var(--claude-danger);
+      background: color-mix(in srgb, var(--claude-danger) 8%, var(--claude-surface));
+      border: 1px solid color-mix(in srgb, var(--claude-danger) 22%, var(--claude-border));
       border-radius: var(--radius-sm);
       padding: 10px 12px;
-      background: color-mix(in srgb, var(--claude-surface) 92%, transparent);
-      min-width: 0;
+      margin: 0 auto;
+      max-width: 40em;
+      line-height: var(--lh-readable);
+      font-weight: 500;
+      white-space: pre-wrap;
+      word-break: break-word;
+      text-align: center;
     }
-    .usage-cp-top-title {
-      font-size: 11px;
-      font-weight: 800;
+    .usage-section {
+      margin-top: 0;
+      width: 100%;
+    }
+    .ocma-usage-hero {
+      margin-top: 0;
+    }
+    .ocma-usage-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-auto-rows: 1fr;
+      gap: 10px;
+      margin-bottom: 0;
+      width: 100%;
+      align-items: stretch;
+    }
+    .ocma-usage-summary.ocma-usage-summary--dense {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    @media (max-width: 640px) {
+      .ocma-usage-summary,
+      .ocma-usage-summary.ocma-usage-summary--dense { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 360px) {
+      .ocma-usage-summary,
+      .ocma-usage-summary.ocma-usage-summary--dense { grid-template-columns: 1fr; }
+    }
+    .ocma-usage-tablewrap--scroll {
+      max-height: min(48vh, 360px);
+      overflow: auto;
+      border-radius: var(--radius-sm);
+      border: 1px solid color-mix(in srgb, var(--claude-border) 90%, transparent);
+    }
+    .ocma-usage-tablewrap--scroll .ocma-usage-table {
+      margin: 0;
+    }
+    .ocma-usage-session-detail {
+      font-size: 10px;
       color: var(--claude-muted);
-      margin-bottom: 8px;
-      letter-spacing: 0.04em;
+      margin-top: 5px;
+      line-height: var(--lh-caption);
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
     }
-    .usage-cp-top-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-      align-items: center;
-      padding: 6px 0;
-      border-bottom: 1px solid var(--claude-border);
-      font-size: 12px;
-    }
-    .usage-cp-top-row:last-child {
-      border-bottom: none;
-    }
-    .usage-cp-top-l {
-      font-weight: 600;
-      color: var(--claude-text, inherit);
+    .ocma-usage-metric {
+      background: var(--claude-surface);
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius);
+      padding: 12px 10px 11px;
       min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .usage-cp-top-r {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--claude-muted);
-      flex-shrink: 0;
-    }
-    .usage-cp-section-title {
-      font-size: 12px;
-      font-weight: 800;
-      margin: 16px 0 8px 0;
-      color: var(--claude-text, inherit);
-    }
-    .usage-cp-token-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 14px;
-      padding: 10px 0;
-      font-size: 12px;
-    }
-    .usage-daily-chart {
-      display: flex;
-      align-items: flex-end;
-      gap: 6px;
-      height: 120px;
-      padding: 8px 4px 0 4px;
-      overflow-x: auto;
-    }
-    .usage-daily-bar-wrap {
+      min-height: 7.25rem;
+      box-shadow: var(--shadow-xs);
+      transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
       display: flex;
       flex-direction: column;
       align-items: center;
-      flex: 1;
-      min-width: 28px;
+      justify-content: flex-start;
+      text-align: center;
       height: 100%;
     }
-    .usage-daily-bar {
-      width: 100%;
-      max-width: 22px;
-      min-height: 2px;
-      background: color-mix(in srgb, var(--claude-accent, #6366f1) 85%, var(--claude-border));
-      border-radius: 3px 3px 0 0;
-      margin-top: auto;
+    .ocma-usage-metric:hover {
+      border-color: var(--claude-border-strong);
+      box-shadow: var(--shadow-sm);
     }
-    .usage-daily-label {
+    .ocma-usage-metric-label {
+      font-size: var(--text-micro);
+      font-weight: 600;
+      color: var(--claude-muted);
+      margin-bottom: 0;
+      line-height: var(--lh-caption);
+      letter-spacing: 0.02em;
+      flex: 0 0 auto;
+    }
+    .ocma-usage-metric-value {
+      font-size: 17px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.25;
+      word-break: break-word;
+      color: var(--claude-text);
+      letter-spacing: -0.02em;
+      flex: 1 1 auto;
+      min-height: 0;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ocma-usage-metric-sub {
       font-size: 10px;
       color: var(--claude-muted);
-      margin-top: 6px;
+      margin-top: 0;
+      padding-top: 6px;
+      font-weight: 500;
+      line-height: 1.4;
+      width: 100%;
+      text-align: center;
+      flex: 0 0 auto;
+    }
+    .ocma-usage-ranks {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 0;
+      width: 100%;
+    }
+    .ocma-usage-block {
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius);
+      background: var(--claude-surface);
+      padding: 10px 11px 11px;
+      min-width: 0;
+      box-shadow: var(--shadow-xs);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .ocma-usage-h3 {
+      font-size: 10px;
+      font-weight: 700;
+      margin: 0 0 7px 0;
+      color: var(--claude-muted);
+      line-height: 1.3;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-align: left;
+    }
+    .ocma-usage-tablewrap {
+      overflow-x: auto;
+      margin: 0;
+      padding: 0;
+      border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    }
+    .ocma-usage-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-micro);
       font-variant-numeric: tabular-nums;
     }
-    .usage-cp-session-list {
-      border: 1px solid var(--claude-border);
-      border-radius: var(--radius-sm);
-      overflow: hidden;
+    .ocma-usage-table th,
+    .ocma-usage-table td {
+      padding: 7px 10px;
+      text-align: left;
+      border-bottom: 1px solid color-mix(in srgb, var(--claude-border) 85%, transparent);
+      vertical-align: middle;
     }
-    .usage-cp-session-row {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--claude-border);
-      background: color-mix(in srgb, var(--claude-bg-elevated) 40%, var(--claude-surface));
+    .ocma-usage-table th.ocma-usage-th-num,
+    .ocma-usage-table td.ocma-usage-td-num {
+      text-align: right;
+      white-space: nowrap;
     }
-    .usage-cp-session-row:last-child {
+    .ocma-usage-table th.ocma-usage-th-num {
+      min-width: 3.25rem;
+    }
+    .ocma-usage-table th {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--claude-muted);
+      background: color-mix(in srgb, var(--claude-bg-elevated) 65%, var(--claude-surface));
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .ocma-usage-table tbody tr:nth-child(even) td {
+      background: color-mix(in srgb, var(--claude-bg-elevated) 28%, transparent);
+    }
+    .ocma-usage-table tr:last-child td {
       border-bottom: none;
     }
-    .usage-cp-session-head {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-      margin-bottom: 6px;
+    .ocma-usage-table .ocma-usage-td-name {
+      font-weight: 600;
+      font-size: var(--text-micro);
+      max-width: 220px;
+      word-break: break-word;
+      color: var(--claude-text);
     }
-    .usage-cp-session-key {
+    .ocma-usage-table .ocma-usage-td-num {
       font-family: var(--font-mono);
-      font-size: 12px;
-      font-weight: 700;
-      word-break: break-all;
-    }
-    .usage-cp-flag {
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: color-mix(in srgb, var(--claude-border) 50%, transparent);
-      color: var(--claude-muted);
-      font-weight: 700;
-    }
-    .usage-cp-session-meta {
       font-size: 11px;
-      color: var(--claude-muted);
+      color: var(--claude-text);
+      white-space: nowrap;
       font-weight: 600;
     }
-    .usage-sys-subtitle {
-      font-size: 11px;
-      font-weight: 700;
+    .ocma-usage-section-title {
+      font-size: var(--text-caption);
+      font-weight: 600;
       color: var(--claude-muted);
-      margin: 4px 0 8px 0;
+      margin: 0 0 8px 0;
+      line-height: var(--lh-caption);
+      letter-spacing: 0.02em;
+      text-align: left;
+      width: 100%;
+    }
+    .ocma-usage-token-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius);
+      background: var(--claude-bg-elevated);
+      box-shadow: var(--shadow-xs);
+    }
+    @media (max-width: 640px) {
+      .ocma-usage-token-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    .ocma-usage-token-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 4px;
+      min-width: 0;
+    }
+    .ocma-usage-token-lbl {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--claude-muted);
+      line-height: 1.3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .ocma-usage-token-val {
+      font-size: 15px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--claude-text);
+      line-height: 1.2;
+    }
+    .ocma-usage-token-exact {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--claude-muted);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .ocma-usage-token-lbl .ocma-usage-swatch {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .ocma-usage-daily-chart {
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 6px;
+      height: 100px;
+      padding: 8px 10px 0;
+      overflow-x: auto;
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius);
+      background: var(--claude-bg-elevated);
+      box-shadow: var(--shadow-xs);
+    }
+    .ocma-usage-daily-bar-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1 1 0;
+      min-width: 24px;
+      max-width: 40px;
+      height: 100%;
+    }
+    .ocma-usage-daily-bar {
+      width: 100%;
+      max-width: 18px;
+      min-height: 2px;
+      background: color-mix(in srgb, var(--claude-accent) 72%, var(--claude-border-strong));
+      border-radius: 4px 4px 0 0;
+      margin-top: auto;
+    }
+    .ocma-usage-daily-label {
+      font-size: 9px;
+      color: var(--claude-muted);
+      margin-top: 5px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .ocma-usage-session-list {
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-xs);
+    }
+    .ocma-usage-session-row {
+      padding: 10px 12px;
+      border-bottom: 1px solid color-mix(in srgb, var(--claude-border) 80%, transparent);
+      background: var(--claude-surface);
+    }
+    .ocma-usage-session-row:nth-child(even) {
+      background: color-mix(in srgb, var(--claude-bg-elevated) 32%, var(--claude-surface));
+    }
+    .ocma-usage-session-row:last-child {
+      border-bottom: none;
+    }
+    .ocma-usage-session-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .ocma-usage-session-key {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      word-break: break-all;
+      color: var(--claude-text);
+    }
+    .ocma-usage-session-primary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px 14px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid color-mix(in srgb, var(--claude-border) 75%, transparent);
+    }
+    @media (max-width: 400px) {
+      .ocma-usage-session-primary {
+        grid-template-columns: 1fr;
+      }
+    }
+    .ocma-usage-session-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 3px;
+      min-width: 0;
+    }
+    .ocma-usage-session-stat-lbl {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--claude-muted);
+      letter-spacing: 0.02em;
+    }
+    .ocma-usage-session-stat-val {
+      font-size: 13px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--claude-text);
+      line-height: 1.2;
+    }
+    .ocma-usage-session-stat-sub {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--claude-muted);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .ocma-usage-tag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: var(--radius-pill);
+      background: color-mix(in srgb, var(--claude-bg-elevated) 70%, var(--claude-border));
+      color: var(--claude-muted);
+      font-weight: 600;
+      border: 1px solid color-mix(in srgb, var(--claude-border) 70%, transparent);
     }
     .backup-toolbar {
       display: flex;
@@ -1383,8 +1585,8 @@
     <header>
       <div class="header-brand"><h1>OpenClaw 管理</h1></div>
       <div class="header-actions">
-        <button type="button" class="header-action-btn header-action-btn--sync" id="syncBtn" onclick="manualSync()" title="仅从磁盘重新读取配置并刷新本页显示，不修改 openclaw.json、不写 sessions.json、不重启网关">同步</button>
-        <button type="button" class="header-action-btn header-action-btn--apply" id="saveBtn" onclick="saveSelection()" title="写入全局路由与选项 → 按当前界面同步各会话模型/推理/提权 → 重启网关（与会话区「写入会话」「跟随全局」同一套完整下发）">应用</button>
+        <button type="button" class="header-action-btn header-action-btn--sync" id="syncBtn" onclick="manualSync()" title="重新拉取配置并刷新本页；用量仅在「使用情况」展开时才会向网关刷新，收起时跳过以加快同步">同步</button>
+        <button type="button" class="header-action-btn header-action-btn--apply" id="saveBtn" onclick="saveSelection()" title="写入全局路由与选项 → 按当前界面同步各会话模型/推理/提权 → 重启网关">应用</button>
         <button type="button" class="header-action-btn header-action-btn--restart" id="restartBtn" onclick="restartService()" title="仅重启网关服务，不写 openclaw.json">重启</button>
       </div>
     </header>
@@ -1395,7 +1597,9 @@
       <div class="stat-item"><span class="stat-label">供应商</span><div class="stat-value" id="statProviders">0</div></div>
       <div class="stat-item"><span class="stat-label">总模型数</span><div class="stat-value" id="statModelsTotal">0</div></div>
     </div>
-    <div class="tab-nav">
+    <p class="hint-tight" id="uiModelPickerHint" style="display:none;margin:6px 0 0;color:var(--claude-muted)"></p>
+    <div id="alignmentHintsBar" class="callout callout-muted" style="display:none;margin-top:10px"></div>
+    <div class="tab-nav" id="mainTabNav">
       <button type="button" class="tab-btn active" data-tab="tab-routing" onclick="switchTab('tab-routing')">路由设置</button>
       <button type="button" class="tab-btn" data-tab="tab-library" onclick="switchTab('tab-library')">模型库</button>
       <button type="button" class="tab-btn" data-tab="tab-add" onclick="switchTab('tab-add')">接入配置</button>
@@ -1407,14 +1611,14 @@
           <div class="route-title">全局选项</div>
           <div class="field-row field-row--tight-top">
             <label class="field-label">展现推理过程</label>
-            <select id="reasoningDisplay" class="compact-select" title="全局默认；顶栏「应用」下发全会话。各渠道会话在运行状态用同一组「写入会话 / 跟随全局」覆盖本条。">
+            <select id="reasoningDisplay" class="compact-select" title="全局默认；顶栏「应用」下发全会话。">
               <option value="off">关闭</option>
               <option value="on">开启</option>
             </select>
           </div>
           <div class="field-row">
             <label class="field-label">提权模式 (Elevated)</label>
-            <select id="elevatedDefault" class="compact-select" title="全局默认；顶栏「应用」下发全会话。各会话「写入会话」会同时提交模型+推理+提权。">
+            <select id="elevatedDefault" class="compact-select" title="全局默认；顶栏「应用」下发全会话。">
               <option value="off">关闭</option>
               <option value="full">开启</option>
             </select>
@@ -1434,6 +1638,56 @@
           </div>
         </div>
       </div>
+      <details class="collapsible page-meta-bottom home-usage-details" id="homeUsageCard">
+        <summary>使用情况</summary>
+        <div class="collapsible-content">
+          <div id="homeUsageBody" class="usage-root"></div>
+        </div>
+      </details>
+      <details class="collapsible page-meta-bottom backup-panel-details" id="backupPanelDetails">
+        <summary>备份与恢复</summary>
+        <div class="collapsible-content">
+          <p class="hint-tight" style="margin-top:0;margin-bottom:0;">后台每 <span id="backupIntervalHint">—</span> 分钟自动备份；仅保留约 <span id="backupRetentionHint">7</span> 天内的快照。「恢复」会先自动备份当前文件再覆盖。</p>
+          <div class="backup-toolbar">
+            <button type="button" class="ghost" id="backupNowBtn">立即备份</button>
+            <button type="button" class="ghost" id="backupRestoreOpenBtn" aria-expanded="false">从备份恢复</button>
+          </div>
+          <div class="backup-restore-panel" id="backupRestorePanel" aria-hidden="true">
+            <p class="hint-tight" style="margin:0;">选中快照后点「恢复选中」。将覆盖当前 <code>openclaw.json</code>（及备份里有的 <code>sessions.json</code>）；会先自动再备份一版现状。</p>
+            <label class="backup-restore-label">
+              <span class="hint-tight" style="font-weight:700;">选择快照</span>
+              <select id="restoreBackupSelect" class="backup-restore-select"></select>
+            </label>
+            <div class="backup-restore-actions">
+              <button type="button" class="primary" id="restoreBackupConfirmBtn">恢复选中</button>
+            </div>
+          </div>
+          <p class="backup-path-hint" id="backupPathHint"></p>
+        </div>
+      </details>
+      <details class="collapsible page-meta-bottom" id="gatewayLogDetails">
+        <summary>网关日志</summary>
+        <div class="collapsible-content">
+          <p class="gateway-log-meta" id="gatewayLogMeta">展开后自动拉取近期日志；无 journalctl 权限时可配置环境变量 OPENCLAW_GATEWAY_LOG_FILE 指向日志文件。</p>
+          <div class="gateway-log-toolbar">
+            <label class="hint-tight" style="margin:0;display:flex;align-items:center;gap:8px;">
+              行数
+              <select id="gatewayLogLines" title="每次拉取的行数">
+                <option value="100">100</option>
+                <option value="200" selected>200</option>
+                <option value="400">400</option>
+                <option value="800">800</option>
+              </select>
+            </label>
+            <button type="button" class="ghost" id="gatewayLogRefreshBtn">刷新</button>
+          </div>
+          <pre class="gateway-log-pre" id="gatewayLogBody" aria-live="polite">（尚未加载）</pre>
+        </div>
+      </details>
+      <details class="collapsible page-meta-bottom" id="localMachineInfoDetails">
+        <summary>本机信息</summary>
+        <div class="collapsible-content" id="pageMetaBody"><p class="hint-tight">载入后显示管理端版本与路径</p></div>
+      </details>
     </div>
     <div id="tab-library" class="tab-content"><div id="providerSections" class="library-root"></div></div>
     <div id="tab-add" class="tab-content">
@@ -1489,57 +1743,6 @@
         </div>
       </div>
     </div>
-    <details class="collapsible page-meta-bottom home-usage-details" id="homeUsageCard">
-      <summary>使用情况</summary>
-      <div class="collapsible-content">
-        <p class="hint-tight" style="margin-top:0;margin-bottom:12px;">用量展示（与 ClawPanel 一致布局）。</p>
-        <div id="homeUsageBody" class="usage-root"></div>
-      </div>
-    </details>
-    <details class="collapsible page-meta-bottom backup-panel-details" id="backupPanelDetails">
-      <summary>备份与恢复</summary>
-      <div class="collapsible-content">
-        <p class="hint-tight" style="margin-top:0;margin-bottom:0;">后台每 <span id="backupIntervalHint">—</span> 分钟自动备份；仅保留约 <span id="backupRetentionHint">7</span> 天内的快照。「恢复」会先自动备份当前文件再覆盖。</p>
-        <div class="backup-toolbar">
-          <button type="button" class="ghost" id="backupNowBtn">立即备份</button>
-          <button type="button" class="ghost" id="backupRestoreOpenBtn" aria-expanded="false">从备份恢复</button>
-        </div>
-        <div class="backup-restore-panel" id="backupRestorePanel" aria-hidden="true">
-          <p class="hint-tight" style="margin:0;">选中快照后点「恢复选中」。将覆盖当前 <code>openclaw.json</code>（及备份里有的 <code>sessions.json</code>）；会先自动再备份一版现状。</p>
-          <label class="backup-restore-label">
-            <span class="hint-tight" style="font-weight:700;">选择快照</span>
-            <select id="restoreBackupSelect" class="backup-restore-select"></select>
-          </label>
-          <div class="backup-restore-actions">
-            <button type="button" class="primary" id="restoreBackupConfirmBtn">恢复选中</button>
-          </div>
-        </div>
-        <p class="backup-path-hint" id="backupPathHint"></p>
-      </div>
-    </details>
-    <details class="collapsible page-meta-bottom" id="gatewayLogDetails">
-      <summary>网关日志</summary>
-      <div class="collapsible-content">
-        <p class="gateway-log-meta" id="gatewayLogMeta">展开后自动拉取近期日志；无 journalctl 权限时可配置环境变量 OPENCLAW_GATEWAY_LOG_FILE 指向日志文件。</p>
-        <div class="gateway-log-toolbar">
-          <label class="hint-tight" style="margin:0;display:flex;align-items:center;gap:8px;">
-            行数
-            <select id="gatewayLogLines" title="每次拉取的行数">
-              <option value="100">100</option>
-              <option value="200" selected>200</option>
-              <option value="400">400</option>
-              <option value="800">800</option>
-            </select>
-          </label>
-          <button type="button" class="ghost" id="gatewayLogRefreshBtn">刷新</button>
-        </div>
-        <pre class="gateway-log-pre" id="gatewayLogBody" aria-live="polite">（尚未加载）</pre>
-      </div>
-    </details>
-    <details class="collapsible page-meta-bottom" id="localMachineInfoDetails">
-      <summary>本机信息</summary>
-      <div class="collapsible-content" id="pageMetaBody"><p class="hint-tight">载入后显示管理端版本与路径</p></div>
-    </details>
   </div>
   <div id="toastMini" role="status" aria-live="polite"></div>
   <div class="dock">
@@ -1599,9 +1802,10 @@
       if (!id) return;
       const panel = document.getElementById(id);
       if (!panel) return;
-      document.querySelectorAll('.tab-nav .tab-btn').forEach((b) => b.classList.remove('active'));
+      const nav = document.getElementById('mainTabNav');
+      if (nav) nav.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
-      const btn = document.querySelector('.tab-nav .tab-btn[data-tab="' + id.replace(/"/g, '') + '"]');
+      const btn = nav ? nav.querySelector('.tab-btn[data-tab="' + id.replace(/"/g, '') + '"]') : null;
       if (btn) btn.classList.add('active');
       panel.classList.add('active');
     }
@@ -1647,16 +1851,47 @@
       const el = document.getElementById('maxTokens');
       if (el) el.value = String(snapMaxTokensToChoice(n));
     }
-    function groupedModels() { const g = new Map(); (state?.models || []).forEach(m => { if(!g.has(m.provider)) g.set(m.provider, []); g.get(m.provider).push(m); }); return Array.from(g.entries()).map(([p, models]) => ({ provider:p, models })); }
+    /** 与后端 build_state().models 一致：页面「模型库」、顶栏主备路由、运行状态各会话下拉——三者共用这一份列表（models.providers 入库模型 + 仅 agents 登记的内置行） */
+    function catalogModelsForUi() {
+      return (state && Array.isArray(state.models)) ? state.models : [];
+    }
+    function normalizeProviderKeyForUi(name) {
+      var s = String(name || '').trim().toLowerCase();
+      if (s === 'openai-codex' || s === 'github-copilot') return s;
+      return s;
+    }
+    function findGroupByProvider(groups, provSegment) {
+      if (!groups || !groups.length) return null;
+      if (provSegment == null || String(provSegment).trim() === '') return null;
+      var want = normalizeProviderKeyForUi(provSegment);
+      for (var i = 0; i < groups.length; i++) {
+        if (normalizeProviderKeyForUi(groups[i].provider) === want) return groups[i];
+      }
+      return null;
+    }
+    function groupedModels() {
+      var g = new Map();
+      catalogModelsForUi().forEach(function (m) {
+        if (!m || !m.provider) return;
+        if (!g.has(m.provider)) g.set(m.provider, []);
+        g.get(m.provider).push(m);
+      });
+      return Array.from(g.entries()).map(function (entry) {
+        return { provider: entry[0], models: entry[1] };
+      });
+    }
     function populate(prefix, ref) {
       const ps = document.getElementById(prefix+'Provider'), ms = document.getElementById(prefix+'Model'), groups = groupedModels();
-      const currP = ref && ref.includes('/') ? ref.split('/')[0] : (groups[0]?.provider || '');
+      const seg = ref && ref.includes('/') ? ref.split('/')[0] : '';
+      const grp0 = findGroupByProvider(groups, seg) || (state.primary && state.primary.includes('/') ? findGroupByProvider(groups, state.primary.split('/')[0]) : null) || groups[0];
+      const currP = grp0 ? grp0.provider : (groups[0] && groups[0].provider) || '';
       ps.innerHTML = (prefix!=='p'?'<option value="">(无)</option>':'') + groups.map(g => `<option value="${g.provider}" ${g.provider===currP?'selected':''}>${g.provider}</option>`).join('');
       const actP = ps.value;
       const models = actP ? ((groups.find(g => g.provider === actP) || {}).models || []) : [];
-      ms.innerHTML = (prefix!=='p'?'<option value="">(无)</option>':'') + models.map(m => `<option value="${m.ref}" ${m.ref===ref?'selected':''}>${m.name || m.id}</option>`).join('');
+      const rk = normModelRefKey(ref);
+      ms.innerHTML = (prefix!=='p'?'<option value="">(无)</option>':'') + models.map(m => `<option value="${m.ref}" ${normModelRefKey(m.ref)===rk?'selected':''}>${m.name || m.id}</option>`).join('');
     }
-    /** 运行状态：各渠道会话的 modelOverride 下拉（与路由卡片同一套 groupedModels） */
+    /** 运行状态：会话 modelOverride 下拉——选项与下方模型库同源（catalogModelsForUi / groupedModels） */
     function populateSessionRow(row, ref) {
       const ps = row.querySelector('.sessProv');
       const ms = row.querySelector('.sessMod');
@@ -1668,22 +1903,28 @@
         return;
       }
       const r0 = (ref && ref !== '—' && String(ref).trim()) ? String(ref).trim() : (state.primary || '');
-      let currP = r0.includes('/') ? r0.split('/')[0] : '';
-      if (!currP || !groups.some((g) => g.provider === currP)) {
-        currP = state.primary && state.primary.includes('/') ? state.primary.split('/')[0] : groups[0].provider;
+      let seg = r0.includes('/') ? r0.split('/')[0] : '';
+      let grp = findGroupByProvider(groups, seg);
+      if (!grp && state.primary && state.primary.includes('/')) {
+        grp = findGroupByProvider(groups, state.primary.split('/')[0]);
       }
+      if (!grp) grp = groups[0];
+      const currP = grp.provider;
       ps.innerHTML = groups.map((g) => `<option value="${escAttr(g.provider)}">${g.provider}</option>`).join('');
-      ps.value = groups.some((x) => x.provider === currP) ? currP : groups[0].provider;
-      const actP = ps.value;
-      const models = ((groups.find((g) => g.provider === actP) || {}).models) || [];
+      ps.value = currP;
+      const models = grp.models || [];
       const selRef = r0.includes('/') ? r0 : (state.primary || '');
       if (!models.length) {
         ms.innerHTML = '';
         return;
       }
       ms.innerHTML = models.map((m) => `<option value="${escAttr(m.ref)}">${m.name || m.id}</option>`).join('');
-      if (selRef && models.some((m) => m.ref === selRef)) ms.value = selRef;
-      else ms.value = models[0].ref;
+      var pick = null;
+      var rkSel = normModelRefKey(selRef);
+      for (var j = 0; j < models.length; j++) {
+        if (normModelRefKey(models[j].ref) === rkSel) { pick = models[j].ref; break; }
+      }
+      ms.value = pick != null ? pick : models[0].ref;
     }
     function wireSessionRowProviderChange(row) {
       const ps = row.querySelector('.sessProv');
@@ -1696,7 +1937,10 @@
         const models = actP ? ((groupedModels().find((g) => g.provider === actP) || {}).models || []) : [];
         const prev = ms.value;
         ms.innerHTML = models.map((m) => `<option value="${escAttr(m.ref)}">${m.name || m.id}</option>`).join('');
-        if (prev && models.some((m) => m.ref === prev)) ms.value = prev;
+        var hit = prev && models.length
+          ? models.find(function (m) { return normModelRefKey(m.ref) === normModelRefKey(prev); })
+          : null;
+        if (hit) ms.value = hit.ref;
         else if (models[0]) ms.value = models[0].ref;
       });
     }
@@ -1749,12 +1993,17 @@
     function normModelRefKey(r) {
       return String(r || '').trim().toLowerCase();
     }
+    /** 与微信端一致：有条可编辑会话时模型行固定后缀「会话内模型」（不区分是否等于全局默认、不做空白后缀） */
+    function runtimeSessionModelSuffix(ac) {
+      if (!ac || !ac.sessionKey) return '';
+      return '（会话内模型）';
+    }
     /** 按当前界面把运行状态里各会话写入 sessions.json（须串行，避免并发覆盖） */
     async function pushAllSessionRowsFromUi() {
       const rt = document.getElementById('runtimeInfo');
       if (!rt) return;
-      const prim = normModelRefKey(document.getElementById('pModel').value);
       const wraps = rt.querySelectorAll('.runtime-session-wrap[data-session-key]');
+      var lastState = null;
       for (let i = 0; i < wraps.length; i++) {
         const wrap = wraps[i];
         const sk = wrap.getAttribute('data-session-key');
@@ -1763,20 +2012,18 @@
         if (!ref || ref.indexOf('/') === -1) continue;
         const sr = wrap.querySelector('.sessReason');
         const se = wrap.querySelector('.sessElev');
-        const reasoningLevel = sr && sr.value === 'inherit' ? null : sr && sr.value;
-        const elevatedLevel = se && se.value === 'inherit' ? null : se && se.value;
-        const followModel = normModelRefKey(ref) === prim;
-        if (followModel && reasoningLevel == null && elevatedLevel == null) {
-          await apiReq('/api/session/model-override', { sessionKey: sk, clear: true });
-          await apiReq('/api/session/behavior', { sessionKey: sk, reasoningLevel: null, elevatedLevel: null });
-        } else if (followModel) {
-          await apiReq('/api/session/model-override', { sessionKey: sk, clear: true });
-          await apiReq('/api/session/behavior', { sessionKey: sk, reasoningLevel, elevatedLevel });
-        } else {
-          await apiReq('/api/session/model-override', { sessionKey: sk, modelRef: ref });
-          await apiReq('/api/session/behavior', { sessionKey: sk, reasoningLevel, elevatedLevel });
-        }
+        // 必须产出 null 或合法枚举串，禁止 undefined：JSON.stringify 会丢掉 undefined 键，/api/session/behavior 会 400，导致后续不重启、Pocket 仍像「没变」
+        const reasoningLevel = !sr || sr.value === 'inherit' ? null : sr.value;
+        const elevatedLevel = !se || se.value === 'inherit' ? null : se.value;
+        const behaviorBody = { sessionKey: sk, reasoningLevel, elevatedLevel };
+        // 一律按界面 ref 写入；「跟随全局」只改本行下拉为默认主模型，落盘只靠顶栏「应用」。
+        const d1 = await apiReq('/api/session/model-override', { sessionKey: sk, modelRef: ref });
+        if (d1 && d1.state) lastState = d1.state;
+        const d2 = await apiReq('/api/session/behavior', behaviorBody);
+        if (d2 && d2.state) lastState = d2.state;
       }
+      // 不等网关重启即可与磁盘一致：顶栏「应用」中途即可刷新运行区摘要/下拉
+      if (lastState) renderFromState(lastState);
     }
     /** 顶栏「应用」与会话按钮共用：写 openclaw 全局 → 各会话按界面写入 → 重启网关 → 刷新 */
     async function applyFullDeploy() {
@@ -1785,58 +2032,31 @@
       await apiReq('/api/restart', {});
       await refresh();
     }
-    /** 写入会话 = 仅按界面完整下发（含全局+全会话+重启）；跟随全局 = 先清本条覆盖再同一套完整下发 */
+    /** 把该行模型下拉设为顶栏「主模型」当前值；仅改界面，不写 sessions、不重启。生效须点顶栏「应用」。 */
+    function applySessionRowModelToPrimary(wrap) {
+      if (!wrap) return;
+      var primEl = document.getElementById('pModel');
+      var ref = primEl && primEl.value ? String(primEl.value).trim() : '';
+      if (!ref || ref.indexOf('/') === -1) {
+        ref = state && state.primary ? String(state.primary).trim() : '';
+      }
+      if (!ref || ref.indexOf('/') === -1) return;
+      populateSessionRow(wrap, ref);
+    }
+    /**
+     * 「跟随全局」：只把本行模型选成当前全局主模型（与微信端语义：会话内展示统一带「会话内模型」后缀；落盘仅「应用」）。
+     */
     function bindRuntimeSessionModelOverride() {
       const rt = document.getElementById('runtimeInfo');
       if (!rt || rt.dataset.sessionModelBound === '1') return;
       rt.dataset.sessionModelBound = '1';
-      rt.addEventListener('click', async (e) => {
-        const btn = e.target.closest('[data-action="session-write"], [data-action="session-follow-global"]');
-        if (!btn || !rt.contains(btn)) return;
-        const wrap = btn.closest('.runtime-session-wrap[data-session-key]');
+      rt.addEventListener('click', function (e) {
+        var followBtn = e.target.closest('[data-action="session-follow-global"]');
+        if (!followBtn || !rt.contains(followBtn)) return;
+        var wrap = followBtn.closest('.runtime-session-wrap[data-session-key]');
         if (!wrap) return;
-        const sk = wrap.getAttribute('data-session-key');
-        if (!sk) return;
-        const pair = wrap.querySelectorAll('[data-action="session-write"], [data-action="session-follow-global"]');
-        const followG = btn.dataset.action === 'session-follow-global';
-        const orig = btn.innerHTML;
-        const headerIds = ['syncBtn', 'saveBtn', 'restartBtn'];
-        const prevHeaderDis = {};
-        pair.forEach((b) => { b.disabled = true; });
-        btn.innerHTML = '…';
-        headerIds.forEach((id) => {
-          const el = document.getElementById(id);
-          if (el) {
-            prevHeaderDis[id] = el.disabled;
-            el.disabled = true;
-          }
-        });
-        try {
-          if (!followG) {
-            const ms = wrap.querySelector('.sessMod');
-            const ref = ms && ms.value ? ms.value.trim() : '';
-            if (!ref || ref.indexOf('/') === -1) {
-              alert('请选择完整的 供应商/模型');
-              return;
-            }
-          }
-          if (followG) {
-            await apiReq('/api/session/model-override', { sessionKey: sk, clear: true });
-            await apiReq('/api/session/behavior', { sessionKey: sk, reasoningLevel: null, elevatedLevel: null });
-            await refresh();
-          }
-          await applyFullDeploy();
-        } catch (err) {
-          alert(err && err.message ? err.message : '操作失败');
-          await refresh();
-        } finally {
-          headerIds.forEach((id) => {
-            const el = document.getElementById(id);
-            if (el && Object.prototype.hasOwnProperty.call(prevHeaderDis, id)) el.disabled = prevHeaderDis[id];
-          });
-          pair.forEach((b) => { b.disabled = false; });
-          btn.innerHTML = orig;
-        }
+        applySessionRowModelToPrimary(wrap);
+        applyInlineButtonLoading(followBtn, false, { success: true });
       });
     }
     function initListeners(prefix) {
@@ -1926,6 +2146,52 @@
         }
       }
     }
+
+    /** 任意按钮：与顶栏「同步」相同的 loading / ✓ / ✗ 动效（用于会话区「跟随全局」等无 id 的按钮） */
+    function findFollowGlobalButton(sessionKey) {
+      if (!sessionKey || typeof document === 'undefined') return null;
+      try {
+        var esc = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+          ? CSS.escape(sessionKey)
+          : String(sessionKey).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        var wrap = document.querySelector('.runtime-session-wrap[data-session-key="' + esc + '"]');
+        return wrap ? wrap.querySelector('[data-action="session-follow-global"]') : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function applyInlineButtonLoading(btn, isLoading, outcome) {
+      if (!btn) return;
+      if (isLoading) {
+        if (btn.dataset.oldText == null || btn.dataset.oldText === '') btn.dataset.oldText = btn.innerHTML;
+        btn.innerHTML = '<div class="loading-icon"></div>';
+        btn.disabled = true;
+        btn.classList.remove('success', 'btn-error');
+      } else {
+        var old = btn.dataset.oldText != null && btn.dataset.oldText !== '' ? btn.dataset.oldText : btn.innerHTML;
+        if (outcome && outcome.error) {
+          btn.innerHTML = '<span class="btn-flash-x">✗</span>';
+          btn.classList.add('btn-error');
+          setTimeout(function () {
+            btn.innerHTML = old;
+            btn.disabled = false;
+            btn.classList.remove('btn-error');
+          }, 2200);
+        } else if (outcome && !outcome.error && (outcome.success === true || (typeof outcome.success === 'string' && outcome.success.length > 0))) {
+          btn.innerHTML = outcome.success === true ? '✓' : ('✓ ' + outcome.success);
+          btn.classList.add('success');
+          setTimeout(function () {
+            btn.innerHTML = old;
+            btn.disabled = false;
+            btn.classList.remove('success');
+          }, 2000);
+        } else {
+          btn.innerHTML = old;
+          btn.disabled = false;
+        }
+      }
+    }
     
     function renderFromState(s) {
       state = s;
@@ -1945,6 +2211,32 @@
       } else { alertBar.style.display = 'none'; alertBar.onclick = restartService; }
       document.getElementById('statProviders').textContent = (state.providers || []).length;
       document.getElementById('statModelsTotal').textContent = (state.models || []).length;
+      var ahb = document.getElementById('alignmentHintsBar');
+      if (ahb) {
+        var hints = state.alignmentHints;
+        if (hints && hints.length) {
+          ahb.style.display = 'block';
+          ahb.innerHTML = hints.map(function (h) {
+            return '<p class="hint-tight" style="margin:0 0 8px 0">' + escHtml(String(h)) + '</p>';
+          }).join('');
+        } else {
+          ahb.style.display = 'none';
+          ahb.innerHTML = '';
+        }
+      }
+      var uih = document.getElementById('uiModelPickerHint');
+      if (uih) {
+        var pm0 = state.panelMeta || {};
+        if (pm0.uiModelPickerActive) {
+          uih.style.display = 'block';
+          var nShown = pm0.uiModelPickerShownCount != null ? pm0.uiModelPickerShownCount : (state.models || []).length;
+          var nAllow = pm0.uiModelPickerAllowCount != null ? pm0.uiModelPickerAllowCount : 0;
+          uih.textContent = '已启用 admin-prefs.json 的 uiModelRefs（' + nAllow + ' 条）：本页下拉与模型库仅展示 ' + nShown + ' 个模型。若 uiModelRefsMergeRouting 为 true，还会自动并入当前全局 primary/备用。删 uiModelRefs 或置 [] 可恢复全库。';
+        } else {
+          uih.style.display = 'none';
+          uih.textContent = '';
+        }
+      }
       const pmb = document.getElementById('pageMetaBody');
       if (pmb) {
         const pm = state.panelMeta || {};
@@ -1981,7 +2273,7 @@
           const st = (ac.statusThink != null && ac.statusThink !== '') ? String(ac.statusThink) : 'off';
           const effR = effectiveSessionReasoning(ac);
           const effE = effectiveSessionElevated(ac);
-          const lineModel = '模型 ' + (ac.modelRef || '—') + (ac.viaOverride ? '（会话内模型）' : '');
+          const lineModel = '模型 ' + (ac.modelRef || '—') + runtimeSessionModelSuffix(ac);
           const lineRest = '思考 ' + st + ' · ' + reasoningLabel(effR) + ' · ' + elevatedLabel(effE);
           runtimeHtml += '<div class="runtime-preview-block">';
           runtimeHtml += '<div class="runtime-line">' + escHtml('【' + (ac.previewTitle || '会话') + '】') + '</div>';
@@ -1994,7 +2286,7 @@
             runtimeHtml += '<div class="runtime-session-editor">';
             runtimeHtml += '<div class="runtime-sess-section">';
             runtimeHtml += '<div class="runtime-sess-section-title">模型路由</div>';
-            runtimeHtml += '<div class="route-inputs runtime-sess-selects"><select class="sessProv compact-select"></select><div class="route-sep">/</div><select class="sessMod compact-select"></select></div>';
+            runtimeHtml += '<div class="route-inputs runtime-sess-selects" title="供应商与模型选项与下方「模型库」一致（同一套已入库列表）"><select class="sessProv compact-select"></select><div class="route-sep">/</div><select class="sessMod compact-select"></select></div>';
             runtimeHtml += '</div>';
             runtimeHtml += '<div class="runtime-sess-section">';
             runtimeHtml += '<div class="runtime-sess-section-title">本会话选项</div>';
@@ -2007,8 +2299,7 @@
             runtimeHtml += '<option value="inherit">跟随全局</option><option value="off">关闭</option><option value="full">开启</option></select></div>';
             runtimeHtml += '</div></div>';
             runtimeHtml += '<div class="runtime-sess-actions">';
-            runtimeHtml += '<button type="button" class="ghost runtime-sess-btn" data-action="session-write" title="按当前界面：写全局路由与选项，并同步所有会话行，最后重启网关">写入会话</button>';
-            runtimeHtml += '<button type="button" class="ghost runtime-sess-btn" data-action="session-follow-global" title="先清空本条模型/推理/提权覆盖，再执行与「应用」相同的完整下发与重启">跟随全局</button>';
+            runtimeHtml += '<button type="button" class="ghost runtime-sess-btn runtime-sess-btn-follow" data-action="session-follow-global" title="仅把本行模型选为顶栏「主模型」当前值（不写盘、不重启）；写入 sessions 与网关请点顶栏「应用」">跟随全局</button>';
             runtimeHtml += '</div></div></div>';
           }
           runtimeHtml += '</div>';
@@ -2149,18 +2440,36 @@
         });
         const m = d.meta && d.meta.providerSyncRemoteModels;
         closeFetchModelsPickerModal();
-        if (d.state) {
-          renderFromState(d.state);
-          loadUsageSnapshot();
-          loadBackupListFromApi();
-        } else await refresh();
-        if (m && m.message === '无变更') {
-          showToast('无变更');
+        const st = d.state;
+        const wrote = m && m.message !== '无变更';
+        if (wrote) {
+          try {
+            // 与顶栏「应用」一致：全局路由 + 各会话写盘 + 重启网关
+            await applyFullDeploy();
+            const parts = [];
+            if (m && m.addedCount) parts.push('新增 ' + m.addedCount);
+            if (m && m.removedCount) parts.push('移除 ' + m.removedCount);
+            showToast(
+              (parts.length ? '已同步：' + parts.join('，') : '已同步') + '；已应用并重启网关'
+            );
+          } catch (re) {
+            alert(
+              (re && re.message ? re.message : '应用或重启失败') +
+                '。远端列表已写入配置，请手动点顶栏「应用」完成会话下发与网关重启。'
+            );
+            if (st) {
+              renderFromState(st);
+              loadUsageSnapshot();
+              loadBackupListFromApi();
+            } else await refresh();
+          }
         } else {
-          const parts = [];
-          if (m && m.addedCount) parts.push('新增 ' + m.addedCount);
-          if (m && m.removedCount) parts.push('移除 ' + m.removedCount);
-          showToast(parts.length ? '已同步：' + parts.join('，') : '已同步');
+          if (st) {
+            renderFromState(st);
+            loadUsageSnapshot();
+            loadBackupListFromApi();
+          } else await refresh();
+          showToast('无变更');
         }
       } catch (err) {
         alert(err && err.message ? err.message : '同步失败');
@@ -2285,7 +2594,7 @@
         sel.value = providerName;
         applyReuseProvider();
       }
-      const jumpAdd = document.querySelector('.tab-nav .tab-btn[data-tab="tab-add"]');
+      const jumpAdd = document.querySelector('#mainTabNav .tab-btn[data-tab="tab-add"]');
       if (jumpAdd) jumpAdd.click();
     }
 
@@ -2317,38 +2626,86 @@
       if (isFinite(n) && n > 0) return '$' + n.toFixed(4);
       return '$0';
     }
+    /** 用量区中文展示 */
+    function fmtCostZh(s) {
+      var n = typeof s === 'number' ? s : parseFloat(String(s));
+      if (!isFinite(n) || n <= 0) return '—';
+      return n.toFixed(4) + ' 美元';
+    }
+    /** 延迟毫秒 → 可读（用量区） */
+    function fmtMs(ms) {
+      if (ms == null || ms === '') return '—';
+      var n = typeof ms === 'number' ? ms : parseFloat(String(ms));
+      if (!isFinite(n)) return '—';
+      if (n >= 3600000) return (n / 3600000).toFixed(1) + ' 小时';
+      if (n >= 60000) return (n / 60000).toFixed(1) + ' 分';
+      if (n >= 1000) return (n / 1000).toFixed(1) + ' s';
+      return String(Math.round(n)) + ' ms';
+    }
     function errRatePct(errs, total) {
       if (!total) return '—';
       return ((errs / total) * 100).toFixed(1) + '%';
     }
-    var OCMA_USAGE_LIMIT = 20;
-    /** 与后端 `OPENCLAW_ADMIN_USAGE_BG_INTERVAL_SEC` 默认 300 对齐（改后台间隔时请同步改此值） */
-    var OCMA_USAGE_POLL_MS = 300000;
-    /** 与后端 `_usage_background_preset_keys` 一致：今天=1、7 天、30 天 × limit=20 */
+    /** 与后端 `OPENCLAW_ADMIN_USAGE_LIMIT` 默认 1000 一致（与网关 :18789/usage 默认 limit 对齐；改 env 时请同步改此常量） */
+    var OCMA_USAGE_LIMIT = 1000;
+    /** 与后端 `OPENCLAW_ADMIN_USAGE_BG_INTERVAL_SEC` 默认 180（3 分钟）对齐（改后台间隔时请同步改此值） */
+    var OCMA_USAGE_POLL_MS = 180000;
+    /** 与后端 `_usage_background_preset_keys` 一致：今天=1、7 天、30 天 × 上式 limit */
     var OCMA_USAGE_PRESET_DAYS = [1, 7, 30];
+    /** 会话列表在界面中最多展开条数（接口仍受 limit 约束） */
+    var OCMA_USAGE_SESSION_ROWS = 18;
+    /** 按日汇总表仅展示最近若干日历日（按 date 排序后取最新） */
+    var OCMA_USAGE_DAILY_TABLE_MAX = 3;
+    /** 按日令牌柱图最多展示最近若干日 */
+    var OCMA_USAGE_DAILY_CHART_MAX = 7;
+    function usageSortDailyByDateAsc(daysArr) {
+      return (daysArr || []).slice().sort(function (p, q) {
+        var dp = String(p.date || '');
+        var dq = String(q.date || '');
+        if (dp < dq) return -1;
+        if (dp > dq) return 1;
+        return 0;
+      });
+    }
     function renderUsageToolbar(currentDays) {
-      var d1 = currentDays === 1 ? 'primary' : 'ghost';
-      var d7 = currentDays === 7 ? 'primary' : 'ghost';
-      var d30 = currentDays === 30 ? 'primary' : 'ghost';
+      function seg(d) {
+        return 'tab-btn' + (currentDays === d ? ' active' : '');
+      }
       return (
-        '<div class="usage-admin-toolbar">' +
-        '<button type="button" class="' + d1 + '" data-usage-days="1">今天</button>' +
-        '<button type="button" class="' + d7 + '" data-usage-days="7">7 天</button>' +
-        '<button type="button" class="' + d30 + '" data-usage-days="30">30 天</button>' +
-        '</div>' +
-        '<p class="usage-cp-desc">Token、会话与模型使用统计</p>' +
-        '<p class="usage-cache-hint" role="note">后台对三档各有一份缓存（约每 5 分钟重建）。本页同一节奏并行拉 1/7/30 天三档，与后台槽一致；界面只重绘当前选中档（有更新时）。收起折叠也继续。点选某天会再拉该档。顶栏「同步」也会拉当前档。</p>'
+        '<div class="usage-range-wrap">' +
+        '<div class="tab-nav usage-range-nav" role="group" aria-label="用量统计范围">' +
+        '<button type="button" class="' +
+        seg(1) +
+        '" data-usage-days="1" aria-pressed="' +
+        (currentDays === 1 ? 'true' : 'false') +
+        '">今日</button>' +
+        '<button type="button" class="' +
+        seg(7) +
+        '" data-usage-days="7" aria-pressed="' +
+        (currentDays === 7 ? 'true' : 'false') +
+        '">近 7 天</button>' +
+        '<button type="button" class="' +
+        seg(30) +
+        '" data-usage-days="30" aria-pressed="' +
+        (currentDays === 30 ? 'true' : 'false') +
+        '">近 30 天</button>' +
+        '</div></div>'
       );
     }
-    /** 切换天数：对齐后端 days=1/7/30 & limit=20，拉该档服务端内存缓存并写入 sessionStorage */
+    /** 切换天数：<code>loadUsageSnapshot</code> 内先读槽/占位立即换高亮，再两阶段拉网关 */
     function switchUsageDaysAndFetch(d) {
       if (!isFinite(d) || d < 1) return;
       window.__ocmaUsageDays = d;
       loadUsageSnapshot();
     }
-    /** 展开用量区时后台拉三档（不写界面当前档位逻辑，只填满本地分键缓存） */
+    /** 展开用量区时并行读其余两档的服务端内存槽（不写 force，避免与当前档网关重建抢同进程 CLI） */
     function prefetchUsagePresetDaysFromServer() {
+      var cur =
+        typeof window.__ocmaUsageDays === 'number' && window.__ocmaUsageDays >= 1
+          ? window.__ocmaUsageDays
+          : 7;
       OCMA_USAGE_PRESET_DAYS.forEach(function (days) {
+        if (days === cur) return;
         var u =
           '/api/usage/snapshot?days=' +
           encodeURIComponent(String(days)) +
@@ -2374,151 +2731,321 @@
       if (!el || el.dataset.usageDayDelegated === '1') return;
       el.dataset.usageDayDelegated = '1';
       el.addEventListener('click', function (ev) {
-        var t = ev.target;
-        if (!t || !t.closest) return;
-        var btn = t.closest('[data-usage-days]');
-        if (!btn || !el.contains(btn)) return;
-        var d = parseInt(btn.getAttribute('data-usage-days'), 10);
-        if (isFinite(d) && d > 0) switchUsageDaysAndFetch(d);
+        var cur = ev.target;
+        while (cur && cur !== el) {
+          if (cur.nodeType === 1 && cur.getAttribute && cur.hasAttribute('data-usage-days')) {
+            var d = parseInt(cur.getAttribute('data-usage-days'), 10);
+            if (isFinite(d) && d > 0) {
+              switchUsageDaysAndFetch(d);
+            }
+            return;
+          }
+          cur = cur.parentNode;
+        }
       });
     }
-    function renderUsageSysFooter(u) {
-      u = u || {};
-      var touch = u.latestSessionTouchMs ? new Date(u.latestSessionTouchMs).toLocaleString() : '—';
-      var free = formatBytes(u.openclawHomeFreeBytes);
-      var total = formatBytes(u.openclawHomeTotalBytes);
-      var pct = (u.openclawHomeFreeBytes != null && u.openclawHomeTotalBytes)
-        ? Math.round(100 * (u.openclawHomeFreeBytes / u.openclawHomeTotalBytes))
-        : null;
-      var gw = (u.gatewayService || '—').replace(/\.service$/i, '');
-      var sysCells = [
-        { k: 'sessions.json', v: formatBytes(u.sessionsFileBytes), sub: '文件体积' },
-        { k: 'openclaw.json', v: formatBytes(u.configFileBytes), sub: '文件体积' },
-        { k: '数据目录余量', v: free + (pct != null ? '（约 ' + pct + '% 空闲）' : ''), sub: total !== '—' ? '卷总 ' + total : '' },
-        { k: '最近会话更新', v: touch, sub: '' },
-        { k: '网关', v: gw, sub: u.gatewayActiveSince || '' }
-      ];
-      return (
-        '<p class="usage-sys-subtitle">本机资源（辅助）</p><div class="home-usage-grid">' +
-        sysCells.map(function (c) {
-          return (
-            '<div class="home-usage-cell"><div class="home-usage-k">' + escHtml(c.k) + '</div><div class="home-usage-v">' + escHtml(c.v) + '</div>' +
-            (c.sub ? '<div class="home-usage-v--sub">' + escHtml(c.sub) + '</div>' : '') +
-            '</div>'
-          );
-        }).join('') +
-        '</div>'
-      );
-    }
-    function renderSessionsUsageClawpanel(n, u) {
+    function renderSessionsUsageOverview(n, u) {
       var daysSel = u.usageDays || (typeof window.__ocmaUsageDays === 'number' ? window.__ocmaUsageDays : 7);
       if (!n) return '<div class="usage-empty">暂无数据</div>';
+      var errBox = '';
+      if (u.sessionsUsageSource === 'empty' && u.sessionsUsageError) {
+        errBox =
+          '<p class="usage-gateway-error" role="alert">' + escHtml(String(u.sessionsUsageError)) + '</p>';
+      }
+      var pendingBar = '';
+      if (u._ocmaUsagePendingGateway) {
+        pendingBar =
+          '<p class="ocma-usage-loading-bar" role="status">正在从网关拉取该统计范围的最新数据，可能需要数十秒，请稍候…</p>';
+      }
       var a = n.totals || {};
       var o = n.aggregates || {};
       var d = o.messages || {};
       var p = o.tools || {};
       var r = fmtTokShort;
-      var c = fmtCostUsd;
+      var tokHint = formatTokenInt;
+      var cu = fmtCostUsd;
+      var lat = o.latency && typeof o.latency === 'object' ? o.latency : null;
       var A = errRatePct;
-      var z =
+      var msgTotal = Number(d.total) || 0;
+      var avgTok =
+        msgTotal > 0 && a.totalTokens != null && isFinite(Number(a.totalTokens))
+          ? Number(a.totalTokens) / msgTotal
+          : null;
+      var miss = a.missingCostEntries != null ? Number(a.missingCostEntries) : 0;
+      var metaPrimary =
+        '<div class="usage-panel-meta">' +
+        escHtml(String(n.startDate || '—')) +
+        ' — ' +
+        escHtml(String(n.endDate || '—'));
+      if (n.updatedAt != null && isFinite(Number(n.updatedAt))) {
+        try {
+          metaPrimary +=
+            ' · 更新于 ' + escHtml(new Date(Number(n.updatedAt)).toLocaleString());
+        } catch (e2) {}
+      }
+      metaPrimary += '</div>';
+      var metaSecondary =
+        miss > 0
+          ? '<div class="usage-panel-meta usage-panel-meta--note">约有 ' +
+            escHtml(String(miss)) +
+            ' 条记录暂无法匹配单价（与网关用量页表现可能一致）。</div>'
+          : '';
+      var usageHead =
+        '<div class="usage-panel-head">' +
         renderUsageToolbar(daysSel) +
-        '<div class="usage-cp-stat-grid">' +
-        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">消息</div><div class="usage-cp-stat-value">' +
+        metaPrimary +
+        metaSecondary +
+        '</div>';
+      var latCardSub =
+        lat && (lat.avgMs != null || lat.count != null)
+          ? '平均 ' +
+            fmtMs(lat.avgMs) +
+            ' · P95 ' +
+            fmtMs(lat.p95Ms) +
+            ' · 最小 ' +
+            fmtMs(lat.minMs) +
+            ' · 最大 ' +
+            fmtMs(lat.maxMs) +
+            ' · 样本 ' +
+            String(lat.count != null ? lat.count : '—')
+          : '网关未返回 aggregates.latency 时为空';
+      var avgSub =
+        avgTok != null
+          ? '约 ' + tokHint(Math.round(avgTok)) + ' token/条（主数字为 k/M 简写）'
+          : '需消息条数大于 0';
+      var summary =
+        '<div class="ocma-usage-summary ocma-usage-summary--dense">' +
+        '<div class="ocma-usage-metric"><div class="ocma-usage-metric-label">消息</div><div class="ocma-usage-metric-value">' +
         escHtml(String(d.total != null ? d.total : 0)) +
-        '</div><div class="usage-cp-stat-meta">' +
+        '</div><div class="ocma-usage-metric-sub">用户 ' +
         escHtml(String(d.user != null ? d.user : 0)) +
-        ' 用户 · ' +
+        ' · 助手 ' +
         escHtml(String(d.assistant != null ? d.assistant : 0)) +
-        ' 助手</div></div>' +
-        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">工具调用</div><div class="usage-cp-stat-value">' +
+        ' · 工具调用 ' +
+        escHtml(String(d.toolCalls != null ? d.toolCalls : 0)) +
+        ' · 工具结果 ' +
+        escHtml(String(d.toolResults != null ? d.toolResults : 0)) +
+        '</div></div>' +
+        '<div class="ocma-usage-metric"><div class="ocma-usage-metric-label">平均令牌/条消息</div><div class="ocma-usage-metric-value">' +
+        escHtml(avgTok != null ? r(avgTok) : '—') +
+        '</div><div class="ocma-usage-metric-sub">' +
+        escHtml(avgSub) +
+        '</div></div>' +
+        '<div class="ocma-usage-metric"><div class="ocma-usage-metric-label">令牌合计</div><div class="ocma-usage-metric-value">' +
+        escHtml(r(a.totalTokens)) +
+        '</div><div class="ocma-usage-metric-sub">输入 ' +
+        escHtml(r(a.input)) +
+        ' · 输出 ' +
+        escHtml(r(a.output)) +
+        ' · 精确 ' +
+        escHtml(tokHint(a.totalTokens)) +
+        ' tok</div></div>' +
+        '<div class="ocma-usage-metric"><div class="ocma-usage-metric-label">费用合计</div><div class="ocma-usage-metric-value">' +
+        escHtml(cu(a.totalCost)) +
+        '</div><div class="ocma-usage-metric-sub">输入 ' +
+        escHtml(cu(a.inputCost)) +
+        ' · 输出 ' +
+        escHtml(cu(a.outputCost)) +
+        '</div></div>' +
+        '<div class="ocma-usage-metric"><div class="ocma-usage-metric-label">工具调用</div><div class="ocma-usage-metric-value">' +
         escHtml(String(p.totalCalls != null ? p.totalCalls : 0)) +
-        '</div><div class="usage-cp-stat-meta">' +
+        '</div><div class="ocma-usage-metric-sub">不同工具 ' +
         escHtml(String(p.uniqueTools != null ? p.uniqueTools : 0)) +
-        ' 种工具</div></div>' +
-        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">错误</div><div class="usage-cp-stat-value">' +
+        ' 种</div></div>' +
+        '<div class="ocma-usage-metric"><div class="ocma-usage-metric-label">错误</div><div class="ocma-usage-metric-value">' +
         escHtml(String(d.errors != null ? d.errors : 0)) +
-        '</div><div class="usage-cp-stat-meta">错误率 ' +
+        '</div><div class="ocma-usage-metric-sub">占消息比例 ' +
         escHtml(A(d.errors, d.total)) +
         '</div></div>' +
-        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">Token 总量</div><div class="usage-cp-stat-value">' +
-        escHtml(r(a.totalTokens)) +
-        '</div><div class="usage-cp-stat-meta">' +
-        escHtml(r(a.input)) +
-        ' 输入 · ' +
-        escHtml(r(a.output)) +
-        ' 输出</div></div>' +
-        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">费用</div><div class="usage-cp-stat-value">' +
-        escHtml(c(a.totalCost)) +
-        '</div><div class="usage-cp-stat-meta">' +
-        escHtml(c(a.inputCost)) +
-        ' 输入 · ' +
-        escHtml(c(a.outputCost)) +
-        ' 输出</div></div>' +
-        '<div class="usage-cp-stat-card"><div class="usage-cp-stat-label">会话</div><div class="usage-cp-stat-value">' +
+        '<div class="ocma-usage-metric"><div class="ocma-usage-metric-label">会话数</div><div class="ocma-usage-metric-value">' +
         escHtml(String((n.sessions || []).length)) +
-        '</div><div class="usage-cp-stat-meta">' +
-        escHtml(String(n.startDate || '')) +
-        ' ~ ' +
-        escHtml(String(n.endDate || '')) +
+        '</div><div class="ocma-usage-metric-sub">网关返回条数（受 limit）</div></div>' +
+        '<div class="ocma-usage-metric"><div class="ocma-usage-metric-label">响应延迟</div><div class="ocma-usage-metric-value">' +
+        escHtml(lat && lat.avgMs != null ? fmtMs(lat.avgMs) : '—') +
+        '</div><div class="ocma-usage-metric-sub">' +
+        escHtml(latCardSub) +
         '</div></div></div>';
-      function g(title, arr, labelFn, valFn) {
-        if (!arr || !arr.length) return '';
-        var h = arr.slice(0, 5).map(function (y) {
-          return (
-            '<div class="usage-cp-top-row"><span class="usage-cp-top-l">' +
-            escHtml(labelFn(y)) +
-            '</span><span class="usage-cp-top-r">' +
-            escHtml(valFn(y)) +
-            '</span></div>'
-          );
-        }).join('');
-        return '<div class="usage-cp-top-card"><div class="usage-cp-top-title">' + escHtml(title) + '</div>' + h + '</div>';
+      function rankBlock(title, inner) {
+        if (!inner || !String(inner).replace(/\s/g, '')) return '';
+        return (
+          '<div class="ocma-usage-block"><h3 class="ocma-usage-h3">' +
+          escHtml(title) +
+          '</h3>' +
+          inner +
+          '</div>'
+        );
       }
-      var D = g('热门模型', o.byModel, function (s) {
-        return s.model || '未知';
-      }, function (s) {
+      function tableFromRows(headRow, bodyRows) {
+        if (!bodyRows) return '';
+        return (
+          '<div class="ocma-usage-tablewrap"><table class="ocma-usage-table"><thead>' +
+          headRow +
+          '</thead><tbody>' +
+          bodyRows +
+          '</tbody></table></div>'
+        );
+      }
+      function tableFromRowsScroll(headRow, bodyRows) {
+        if (!bodyRows) return '';
+        return (
+          '<div class="ocma-usage-tablewrap ocma-usage-tablewrap--scroll"><table class="ocma-usage-table"><thead>' +
+          headRow +
+          '</thead><tbody>' +
+          bodyRows +
+          '</tbody></table></div>'
+        );
+      }
+      function escAggCount(v) {
+        if (v == null || v === '') return '—';
+        var n = Number(v);
+        if (isFinite(n)) return escHtml(String(n));
+        return escHtml(String(v));
+      }
+      var rowsModel = (o.byModel || []).slice(0, 12).map(function (s) {
         var t = s.totals || {};
-        return c(t.totalCost) + ' · ' + r(t.totalTokens);
-      });
-      var F = g('热门服务商', o.byProvider, function (s) {
-        return s.provider || '未知';
-      }, function (s) {
+        return (
+          '<tr><td class="ocma-usage-td-name">' +
+          escHtml(s.model || '（未命名模型）') +
+          '</td><td class="ocma-usage-td-name">' +
+          escHtml(s.provider || '—') +
+          '</td><td class="ocma-usage-td-num">' +
+          escAggCount(s.count) +
+          '</td><td class="ocma-usage-td-num">' +
+          escHtml(cu(t.totalCost)) +
+          '</td><td class="ocma-usage-td-num">' +
+          escHtml(r(t.totalTokens)) +
+          '</td></tr>'
+        );
+      }).join('');
+      var rowsProv = (o.byProvider || []).slice(0, 12).map(function (s) {
         var t = s.totals || {};
-        return c(t.totalCost) + ' · ' + String(s.count != null ? s.count : 0) + ' 次';
-      });
-      var P = g('热门工具', p.tools || [], function (s) {
-        return s.name || '';
-      }, function (s) {
-        return String(s.count != null ? s.count : 0) + ' 次调用';
-      });
-      var U = g('热门 Agent', o.byAgent, function (s) {
-        return s.agentId || 'main';
-      }, function (s) {
+        return (
+          '<tr><td class="ocma-usage-td-name">' +
+          escHtml(s.provider || '（未知服务商）') +
+          '</td><td class="ocma-usage-td-num">' +
+          escAggCount(s.count) +
+          '</td><td class="ocma-usage-td-num">' +
+          escHtml(cu(t.totalCost)) +
+          '</td><td class="ocma-usage-td-num">' +
+          escHtml(r(t.totalTokens)) +
+          '</td></tr>'
+        );
+      }).join('');
+      var rowsTools = (p.tools || []).slice(0, 16).map(function (s) {
+        return (
+          '<tr><td class="ocma-usage-td-name">' +
+          escHtml(s.name || '—') +
+          '</td><td class="ocma-usage-td-num">' +
+          escHtml(String(s.count != null ? s.count : 0)) +
+          '</td></tr>'
+        );
+      }).join('');
+      var rowsAgent = (o.byAgent || []).slice(0, 12).map(function (s) {
         var t = s.totals || {};
-        return c(t.totalCost);
-      });
-      var j = g('热门渠道', o.byChannel, function (s) {
-        return s.channel || 'webchat';
-      }, function (s) {
+        return (
+          '<tr><td class="ocma-usage-td-name">' +
+          escHtml(String(s.agentId != null && s.agentId !== '' ? s.agentId : 'main')) +
+          '</td><td class="ocma-usage-td-num">' +
+          escAggCount(s.count) +
+          '</td><td class="ocma-usage-td-num">' +
+          escHtml(cu(t.totalCost)) +
+          '</td><td class="ocma-usage-td-num">' +
+          escHtml(r(t.totalTokens)) +
+          '</td></tr>'
+        );
+      }).join('');
+      var rowsCh = (o.byChannel || []).slice(0, 12).map(function (s) {
         var t = s.totals || {};
-        return c(t.totalCost);
-      });
-      var E = '<div class="usage-cp-tops-grid">' + D + F + P + U + j + '</div>';
+        return (
+          '<tr><td class="ocma-usage-td-name">' +
+          escHtml(s.channel || 'webchat') +
+          '</td><td class="ocma-usage-td-num">' +
+          escAggCount(s.count) +
+          '</td><td class="ocma-usage-td-num">' +
+          escHtml(cu(t.totalCost)) +
+          '</td><td class="ocma-usage-td-num">' +
+          escHtml(r(t.totalTokens)) +
+          '</td></tr>'
+        );
+      }).join('');
+      var headModel =
+        '<tr><th>模型</th><th>服务商</th><th class="ocma-usage-th-num">次数</th><th class="ocma-usage-th-num">费用</th><th class="ocma-usage-th-num">令牌</th></tr>';
+      var headProv =
+        '<tr><th>服务商</th><th class="ocma-usage-th-num">次数</th><th class="ocma-usage-th-num">费用</th><th class="ocma-usage-th-num">令牌</th></tr>';
+      var headTools = '<tr><th>工具</th><th class="ocma-usage-th-num">次数</th></tr>';
+      var headAgent =
+        '<tr><th>智能体</th><th class="ocma-usage-th-num">次数</th><th class="ocma-usage-th-num">费用</th><th class="ocma-usage-th-num">令牌</th></tr>';
+      var headCh =
+        '<tr><th>渠道</th><th class="ocma-usage-th-num">次数</th><th class="ocma-usage-th-num">费用</th><th class="ocma-usage-th-num">令牌</th></tr>';
+      var headDailyAgg =
+        '<tr><th>日期</th><th class="ocma-usage-th-num">消息</th><th class="ocma-usage-th-num">令牌</th><th class="ocma-usage-th-num">费用</th><th class="ocma-usage-th-num">错误</th><th class="ocma-usage-th-num">工具调用</th></tr>';
+      var dailySorted = usageSortDailyByDateAsc(o.daily);
+      var dailyForTable = dailySorted.slice(-OCMA_USAGE_DAILY_TABLE_MAX);
+      var dailyForChart = dailySorted.slice(-OCMA_USAGE_DAILY_CHART_MAX);
+      var rowsDailyAgg = dailyForTable
+        .map(function (e) {
+          return (
+            '<tr><td class="ocma-usage-td-name">' +
+            escHtml(String(e.date || '—')) +
+            '</td><td class="ocma-usage-td-num">' +
+            escHtml(String(e.messages != null ? e.messages : '—')) +
+            '</td><td class="ocma-usage-td-num">' +
+            escHtml(r(e.tokens)) +
+            '</td><td class="ocma-usage-td-num">' +
+            escHtml(cu(e.cost)) +
+            '</td><td class="ocma-usage-td-num">' +
+            escHtml(String(e.errors != null ? e.errors : '—')) +
+            '</td><td class="ocma-usage-td-num">' +
+            escHtml(String(e.toolCalls != null ? e.toolCalls : '—')) +
+            '</td></tr>'
+          );
+        })
+        .join('');
+      var dailyAggSection = rowsDailyAgg
+        ? '<div class="usage-section"><div class="ocma-usage-section-title">按日汇总（近 ' +
+          String(OCMA_USAGE_DAILY_TABLE_MAX) +
+          ' 日）</div>' +
+          tableFromRowsScroll(headDailyAgg, rowsDailyAgg) +
+          '</div>'
+        : '';
+      var B =
+        rankBlock('按模型', tableFromRows(headModel, rowsModel)) +
+        rankBlock('按服务商', tableFromRows(headProv, rowsProv)) +
+        rankBlock('按工具', tableFromRows(headTools, rowsTools)) +
+        rankBlock('按智能体', tableFromRows(headAgent, rowsAgent)) +
+        rankBlock('按渠道', tableFromRows(headCh, rowsCh));
+      var ranksHtml = B
+        ? '<div class="usage-section"><div class="ocma-usage-section-title">维度排行</div><div class="ocma-usage-ranks">' +
+          B +
+          '</div></div>'
+        : '';
       var R =
-        '<div class="usage-section" style="margin-top:4px"><div class="usage-cp-section-title">Token 分类</div><div class="usage-cp-token-legend">' +
-        '<div><span style="display:inline-block;width:10px;height:10px;background:var(--claude-danger,#ef4444);border-radius:2px;margin-right:6px"></span>输出 ' +
+        '<div class="usage-section"><div class="ocma-usage-section-title">令牌构成</div><div class="ocma-usage-token-grid">' +
+        '<div class="ocma-usage-token-cell"><div class="ocma-usage-token-lbl"><span class="ocma-usage-swatch" style="background:var(--claude-danger,#ef4444)"></span>输出</div>' +
+        '<div class="ocma-usage-token-val">' +
         escHtml(r(a.output)) +
-        '</div>' +
-        '<div><span style="display:inline-block;width:10px;height:10px;background:var(--claude-accent,#6366f1);border-radius:2px;margin-right:6px"></span>输入 ' +
+        '</div><div class="ocma-usage-token-exact">(' +
+        escHtml(tokHint(a.output)) +
+        ')</div></div>' +
+        '<div class="ocma-usage-token-cell"><div class="ocma-usage-token-lbl"><span class="ocma-usage-swatch" style="background:var(--claude-accent,#6366f1)"></span>输入</div>' +
+        '<div class="ocma-usage-token-val">' +
         escHtml(r(a.input)) +
-        '</div>' +
-        '<div><span style="display:inline-block;width:10px;height:10px;background:var(--claude-success,#22c55e);border-radius:2px;margin-right:6px"></span>缓存读取 ' +
+        '</div><div class="ocma-usage-token-exact">(' +
+        escHtml(tokHint(a.input)) +
+        ')</div></div>' +
+        '<div class="ocma-usage-token-cell"><div class="ocma-usage-token-lbl"><span class="ocma-usage-swatch" style="background:var(--claude-success,#22c55e)"></span>缓存读取</div>' +
+        '<div class="ocma-usage-token-val">' +
         escHtml(r(a.cacheRead)) +
-        '</div>' +
-        '<div><span style="display:inline-block;width:10px;height:10px;background:var(--claude-warning,#eab308);border-radius:2px;margin-right:6px"></span>缓存写入 ' +
+        '</div><div class="ocma-usage-token-exact">(' +
+        escHtml(tokHint(a.cacheRead)) +
+        ')</div></div>' +
+        '<div class="ocma-usage-token-cell"><div class="ocma-usage-token-lbl"><span class="ocma-usage-swatch" style="background:var(--claude-warning,#eab308)"></span>缓存写入</div>' +
+        '<div class="ocma-usage-token-val">' +
         escHtml(r(a.cacheWrite)) +
-        '</div></div></div>';
-      var x = o.daily || [];
+        '</div><div class="ocma-usage-token-exact">(' +
+        escHtml(tokHint(a.cacheWrite)) +
+        ')</div></div></div></div>';
+      var x = dailyForChart;
       var T = '';
       if (x.length > 0) {
         var maxT = Math.max.apply(
@@ -2528,18 +3055,33 @@
           }).concat([1])
         );
         T =
-          '<div class="usage-section" style="margin-top:8px"><div class="usage-cp-section-title">每日用量</div><div class="usage-daily-chart">' +
+          '<div class="usage-section"><div class="ocma-usage-section-title">按日令牌趋势（最多 ' +
+          String(OCMA_USAGE_DAILY_CHART_MAX) +
+          ' 日）</div><div class="ocma-usage-daily-chart">' +
           x
             .map(function (e) {
               var u0 = Math.max(1, Math.round(((e.tokens || 0) / maxT) * 100));
               var m = (e.date || '').slice(5);
-              var tip = (e.date || '') + ': ' + r(e.tokens) + ' tokens · ' + (e.messages != null ? e.messages : 0) + ' msgs';
+              var tip =
+                (e.date || '') +
+                '：令牌 ' +
+                r(e.tokens) +
+                '（' +
+                tokHint(e.tokens) +
+                '） · 消息 ' +
+                (e.messages != null ? e.messages : 0) +
+                ' · 费用 ' +
+                cu(e.cost) +
+                ' · 错误 ' +
+                (e.errors != null ? e.errors : '—') +
+                ' · 工具 ' +
+                (e.toolCalls != null ? e.toolCalls : '—');
               return (
-                '<div class="usage-daily-bar-wrap" title="' +
+                '<div class="ocma-usage-daily-bar-wrap" title="' +
                 escHtml(tip) +
-                '"><div class="usage-daily-bar" style="height:' +
+                '"><div class="ocma-usage-daily-bar" style="height:' +
                 u0 +
-                '%"></div><div class="usage-daily-label">' +
+                '%"></div><div class="ocma-usage-daily-label">' +
                 escHtml(m) +
                 '</div></div>'
               );
@@ -2547,7 +3089,8 @@
             .join('') +
           '</div></div>';
       }
-      var k = (n.sessions || []).slice(0, 10);
+      var allSess = n.sessions || [];
+      var k = allSess.slice(0, OCMA_USAGE_SESSION_ROWS);
       var C = '';
       if (k.length > 0) {
         var s = k.map(function (t) {
@@ -2558,38 +3101,98 @@
           var m = t.model || (mu && mu.model) || '';
           var h = (mu && mu.provider) || t.modelProvider || '';
           var mc = e.messageCounts || {};
-          var errPart = mc.errors ? ' · ' + mc.errors + ' err' : '';
           var sid = t.sessionId ? String(t.sessionId).slice(0, 12) : '';
           var head =
-            '<div class="usage-cp-session-head"><span class="usage-cp-session-key" title="' +
+            '<div class="ocma-usage-session-head"><span class="ocma-usage-session-key" title="' +
             escHtml(rawKey) +
             '">' +
             escHtml(u0 || sid || '—') +
             '</span>';
-          if (t.agentId) head += '<span class="usage-cp-flag">' + escHtml(String(t.agentId)) + '</span>';
-          if (m) head += '<span class="usage-cp-flag">' + escHtml(String(m)) + '</span>';
-          if (h) head += '<span class="usage-cp-flag">' + escHtml(String(h)) + '</span>';
+          if (t.agentId) head += '<span class="ocma-usage-tag">智能体 ' + escHtml(String(t.agentId)) + '</span>';
+          if (m) head += '<span class="ocma-usage-tag">' + escHtml(String(m)) + '</span>';
+          if (h) head += '<span class="ocma-usage-tag">' + escHtml(String(h)) + '</span>';
           head += '</div>';
+          var errSub = mc.errors
+            ? '<span class="ocma-usage-session-stat-sub">错误 ' + escHtml(String(mc.errors)) + '</span>'
+            : '';
           var meta =
-            '<div class="usage-cp-session-meta">' +
+            '<div class="ocma-usage-session-primary">' +
+            '<div class="ocma-usage-session-stat"><span class="ocma-usage-session-stat-lbl">令牌</span><span class="ocma-usage-session-stat-val">' +
             escHtml(r(e.totalTokens)) +
-            ' tokens · ' +
-            escHtml(c(e.totalCost)) +
-            ' · ' +
+            '</span><span class="ocma-usage-session-stat-sub">' +
+            escHtml(tokHint(e.totalTokens)) +
+            ' tok</span></div>' +
+            '<div class="ocma-usage-session-stat"><span class="ocma-usage-session-stat-lbl">费用</span><span class="ocma-usage-session-stat-val">' +
+            escHtml(cu(e.totalCost)) +
+            '</span></div>' +
+            '<div class="ocma-usage-session-stat"><span class="ocma-usage-session-stat-lbl">消息</span><span class="ocma-usage-session-stat-val">' +
             escHtml(String(mc.total != null ? mc.total : 0)) +
-            ' msgs' +
-            escHtml(errPart) +
-            '</div>';
-          return '<div class="usage-cp-session-row">' + head + meta + '</div>';
+            '</span>' +
+            errSub +
+            '</div></div>';
+          var latS = e.latency && typeof e.latency === 'object' ? e.latency : null;
+          var latLine = '';
+          if (latS && (latS.avgMs != null || latS.count != null)) {
+            latLine =
+              '延迟 平均 ' +
+              fmtMs(latS.avgMs) +
+              ' · P95 ' +
+              fmtMs(latS.p95Ms) +
+              ' · 样本 ' +
+              String(latS.count != null ? latS.count : '—');
+          }
+          var durLine =
+            e.durationMs != null && isFinite(Number(e.durationMs))
+              ? '持续 ' + fmtMs(Number(e.durationMs))
+              : '';
+          var tw = e.toolUsage;
+          var toolLine = '';
+          if (tw && typeof tw === 'object') {
+            var tk = Object.keys(tw);
+            if (tk.length) {
+              toolLine =
+                '工具引用 ' +
+                tk.slice(0, 6).join('、') +
+                (tk.length > 6 ? '…' : '');
+            }
+          }
+          var cx = t.contextWeight != null ? String(t.contextWeight) : '';
+          var detParts = [];
+          if (latLine) detParts.push(latLine);
+          if (durLine) detParts.push(durLine);
+          if (toolLine) detParts.push(toolLine);
+          if (cx) detParts.push('contextWeight ' + escHtml(cx));
+          var detBlock =
+            detParts.length > 0
+              ? '<div class="ocma-usage-session-detail">' + detParts.join(' · ') + '</div>'
+              : '';
+          return '<div class="ocma-usage-session-row">' + head + meta + detBlock + '</div>';
         }).join('');
+        var more =
+          allSess.length > k.length
+            ? '（接口共返回 ' + escHtml(String(allSess.length)) + ' 条，下列展示前 ' + escHtml(String(k.length)) + ' 条）'
+            : '（共 ' + escHtml(String(k.length)) + ' 条）';
         C =
-          '<div class="usage-section" style="margin-top:8px"><div class="usage-cp-section-title">会话明细 <span style="font-weight:600;color:var(--claude-muted);font-size:11px">最近 ' +
-          k.length +
-          ' 个</span></div><div class="usage-cp-session-list">' +
+          '<div class="usage-section"><div class="ocma-usage-section-title">会话列表 ' +
+          '<span style="font-weight:600;color:var(--claude-muted);font-size:12px">' +
+          more +
+          '</span></div><div class="ocma-usage-session-list">' +
           s +
           '</div></div>';
       }
-      return z + E + R + T + C;
+      return (
+        errBox +
+        pendingBar +
+        usageHead +
+        '<div class="usage-section ocma-usage-hero">' +
+        summary +
+        '</div>' +
+        ranksHtml +
+        R +
+        dailyAggSection +
+        T +
+        C
+      );
     }
     function emptyUsagePanelPayload(days) {
       var d = Math.max(1, parseInt(String(days), 10) || 7);
@@ -2615,13 +3218,14 @@
           missingCostEntries: 0,
         },
         aggregates: {
-          messages: { total: 0, user: 0, assistant: 0, errors: 0 },
+          messages: { total: 0, user: 0, assistant: 0, errors: 0, toolCalls: 0, toolResults: 0 },
           tools: { totalCalls: 0, uniqueTools: 0, tools: [] },
           byModel: [],
           byProvider: [],
           byAgent: [],
           byChannel: [],
           daily: [],
+          latency: {},
         },
       };
     }
@@ -2629,11 +3233,16 @@
       var el = document.getElementById('homeUsageBody');
       if (!el) return;
       u = u || {};
+      try {
+        var envCopy = Object.assign({}, u);
+        delete envCopy._ocmaUsagePendingGateway;
+        window.__ocmaLastUsageEnvelope = envCopy;
+      } catch (eStash) {}
       var n = u.sessionsUsage;
       if (!n || typeof n !== 'object') {
         n = emptyUsagePanelPayload(u.usageDays || window.__ocmaUsageDays || 7);
       }
-      el.innerHTML = renderSessionsUsageClawpanel(n, u) + renderUsageSysFooter(u);
+      el.innerHTML = renderSessionsUsageOverview(n, u);
       ensureUsageDayClickDelegation();
     }
     var __ocmaUsageFetchSeq = 0;
@@ -2655,6 +3264,7 @@
     }
     function usageSnapshotHasData(usage) {
       if (!usage || typeof usage !== 'object') return false;
+      if (usage.sessionsUsageSource === 'gateway') return true;
       var su = usage.sessionsUsage;
       if (!su || typeof su !== 'object') return false;
       var sess = su.sessions;
@@ -2694,7 +3304,7 @@
     }
     function usagePanelHasRenderedContent(el) {
       if (!el) return false;
-      return !!(el.querySelector('.home-usage-cell') || el.querySelector('.usage-cp-stat-grid'));
+      return !!(el.querySelector('.ocma-usage-summary') || el.querySelector('.usage-range-nav'));
     }
     /** 与后台三槽一致：每次 tick 并行 GET 1/7/30，更新各档 sessionStorage；仅当前选中档且 usageCachedAt 变化时重绘 */
     async function pollUsageSnapshotFromServerCache() {
@@ -2741,6 +3351,19 @@
         pollUsageSnapshotFromServerCache();
       }, OCMA_USAGE_POLL_MS);
     }
+    /** 后台标签会拖慢/暂停定时器；重新可见或从 bfcache 回来时补拉，减少「必须 F5 才更新」的观感 */
+    function wireUsageVisibilityRefresh() {
+      if (window.__ocmaUsageVisibilityWired) return;
+      window.__ocmaUsageVisibilityWired = '1';
+      function bump() {
+        if (document.hidden) return;
+        void pollUsageSnapshotFromServerCache();
+      }
+      document.addEventListener('visibilitychange', bump);
+      window.addEventListener('pageshow', function (ev) {
+        if (ev && ev.persisted) bump();
+      });
+    }
     function wireHomeUsageCardPoll() {
       var det = document.getElementById('homeUsageCard');
       if (!det || det.dataset.ocmaUsagePollWired) return;
@@ -2753,8 +3376,10 @@
         }
       });
     }
-    /** 仅 GET 后台缓存（无 force）；先 sessionStorage 再拉接口，与后台约 5 分钟三档刷新一致 */
-    async function loadUsageSnapshot() {
+    /** opts.fromCacheOnly：true 时只读服务端内存槽；默认先读槽（快）再 force 打网关（慢），避免长时间卡在旧高亮 */
+    async function loadUsageSnapshot(opts) {
+      opts = opts || {};
+      var fromCacheOnly = opts.fromCacheOnly === true;
       var el = document.getElementById('homeUsageBody');
       if (!el) return;
       if (typeof window.__ocmaUsageDays !== 'number' || window.__ocmaUsageDays < 1) window.__ocmaUsageDays = 7;
@@ -2763,9 +3388,30 @@
       var cached = usageReadCache(days, OCMA_USAGE_LIMIT);
       if (cached) {
         renderUsageBody(cached);
-      }
-      if (!usagePanelHasRenderedContent(el)) {
-        renderUsageBody({ usageDays: days, usageLimit: OCMA_USAGE_LIMIT });
+      } else {
+        var env = window.__ocmaLastUsageEnvelope;
+        if (env && typeof env === 'object') {
+          renderUsageBody(
+            Object.assign({}, env, {
+              usageDays: days,
+              usageLimit: OCMA_USAGE_LIMIT,
+              sessionsUsage: emptyUsagePanelPayload(days),
+              sessionsUsageSource: 'gateway',
+              sessionsUsageError: undefined,
+              _ocmaUsagePendingGateway: true,
+            })
+          );
+        } else if (!usagePanelHasRenderedContent(el)) {
+          renderUsageBody({ usageDays: days, usageLimit: OCMA_USAGE_LIMIT });
+        } else {
+          renderUsageBody({
+            usageDays: days,
+            usageLimit: OCMA_USAGE_LIMIT,
+            sessionsUsage: emptyUsagePanelPayload(days),
+            sessionsUsageSource: 'gateway',
+            _ocmaUsagePendingGateway: true,
+          });
+        }
       }
 
       var seq = ++__ocmaUsageFetchSeq;
@@ -2774,19 +3420,57 @@
         encodeURIComponent(String(days)) +
         '&limit=' +
         encodeURIComponent(String(OCMA_USAGE_LIMIT));
+
+      function writeCacheFromResponse(usageObj) {
+        if (usageSnapshotHasData(usageObj)) usageWriteCache(days, OCMA_USAGE_LIMIT, usageObj);
+      }
+
       try {
-        var r = await fetch(urlBase + '&_=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' });
-        var d = await r.json();
+        if (fromCacheOnly) {
+          var r0 = await fetch(urlBase + '&_=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' });
+          var d0 = await r0.json();
+          if (seq !== __ocmaUsageFetchSeq) return;
+          if (!d0.ok) throw new Error(d0.error || '失败');
+          renderUsageBody(d0.usage || {});
+          if (d0.usageCachedAt != null) usageMarkCachedAtForDay(days, d0.usageCachedAt);
+          writeCacheFromResponse(d0.usage);
+          return;
+        }
+
+        var r1 = await fetch(urlBase + '&_=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' });
+        var d1 = await r1.json();
         if (seq !== __ocmaUsageFetchSeq) return;
-        if (!d.ok) throw new Error(d.error || '失败');
-        renderUsageBody(d.usage || {});
-        if (d.usageCachedAt != null) usageMarkCachedAtForDay(days, d.usageCachedAt);
-        if (usageSnapshotHasData(d.usage)) usageWriteCache(days, OCMA_USAGE_LIMIT, d.usage);
+        if (d1.ok && d1.usage) {
+          renderUsageBody(Object.assign({}, d1.usage, { _ocmaUsagePendingGateway: true }));
+          if (d1.usageCachedAt != null) usageMarkCachedAtForDay(days, d1.usageCachedAt);
+          writeCacheFromResponse(d1.usage);
+        } else if (window.__ocmaLastUsageEnvelope) {
+          renderUsageBody(
+            Object.assign({}, window.__ocmaLastUsageEnvelope, {
+              usageDays: days,
+              usageLimit: OCMA_USAGE_LIMIT,
+              sessionsUsage: emptyUsagePanelPayload(days),
+              sessionsUsageSource: 'empty',
+              _ocmaUsagePendingGateway: true,
+            })
+          );
+        }
+
+        if (seq !== __ocmaUsageFetchSeq) return;
+        var r2 = await fetch(urlBase + '&force=1&_=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' });
+        var d2 = await r2.json();
+        if (seq !== __ocmaUsageFetchSeq) return;
+        if (!d2.ok) throw new Error(d2.error || '失败');
+        renderUsageBody(d2.usage || {});
+        if (d2.usageCachedAt != null) usageMarkCachedAtForDay(days, d2.usageCachedAt);
+        writeCacheFromResponse(d2.usage);
       } catch (e) {
         if (seq !== __ocmaUsageFetchSeq) return;
         renderUsageBody({
           usageDays: days,
           usageLimit: OCMA_USAGE_LIMIT,
+          sessionsUsageSource: 'empty',
+          sessionsUsageError: e && e.message ? String(e.message) : '用量接口不可用',
           sessionsUsage: emptyUsagePanelPayload(days),
         });
       }
@@ -3099,11 +3783,25 @@
       }
     }
 
-    async function refresh() {
+    function isHomeUsageCardOpen() {
+      var det = document.getElementById('homeUsageCard');
+      return !!(det && det.open);
+    }
+
+    async function refresh(opts) {
+      opts = opts || {};
+      var skipUsageForSync =
+        opts.skipUsageWhenUsageCollapsed === true && !isHomeUsageCardOpen();
       try {
         const d = await apiReq('/api/state');
         renderFromState(d.state);
-        loadUsageSnapshot();
+        if (!skipUsageForSync) {
+          if (opts.usageForce) {
+            await loadUsageSnapshot();
+          } else {
+            await loadUsageSnapshot({ fromCacheOnly: true });
+          }
+        }
         loadBackupListFromApi();
         return true;
       } catch(e) {
@@ -3114,7 +3812,13 @@
         }
         document.getElementById('topAlertBar').style.display = 'block';
         document.getElementById('topAlertBar').innerText = '⚠ 无法与管理后台 API 建立连接（' + (location.origin || '') + '）';
-        loadUsageSnapshot();
+        if (!skipUsageForSync) {
+          if (opts.usageForce) {
+            await loadUsageSnapshot();
+          } else {
+            await loadUsageSnapshot({ fromCacheOnly: true });
+          }
+        }
         return false;
       }
     }
@@ -3123,7 +3827,7 @@
     async function manualSync() {
       setLoading('syncBtn', true);
       try {
-        const ok = await refresh();
+        const ok = await refresh({ usageForce: true, skipUsageWhenUsageCollapsed: true });
         if (ok) setLoading('syncBtn', false, { success: true });
         else setLoading('syncBtn', false, { error: true });
       } catch(e) {
@@ -3138,6 +3842,7 @@
         setLoading('saveBtn', false, { success: true });
       } catch (e) {
         setLoading('saveBtn', false, { error: true });
+        alert(e && e.message ? e.message : '应用失败：请检查各会话推理/提权是否为「跟随全局」或具体值后重试');
       }
     }
     
@@ -3214,7 +3919,7 @@
       setMaxTokensUi(model.maxTokens != null ? model.maxTokens : 32768);
       document.getElementById('addTabTitle').innerText = '编辑: ' + model.id;
       document.getElementById('cancelEditBtn').style.display = 'flex';
-      const jumpAdd2 = document.querySelector('.tab-nav .tab-btn[data-tab="tab-add"]');
+      const jumpAdd2 = document.querySelector('#mainTabNav .tab-btn[data-tab="tab-add"]');
       if (jumpAdd2) jumpAdd2.click();
     }
     function cancelEdit() {
@@ -3238,12 +3943,14 @@
       try {
         const b = { provider: document.getElementById('provider').value, baseUrl: document.getElementById('baseUrl').value, apiKey: document.getElementById('apiKey').value, auth: document.getElementById('auth').value, api: document.getElementById('api').value, modelId: document.getElementById('modelId').value, modelName: document.getElementById('modelName').value, thinkingEnabled: document.getElementById('thinkingEnabled').value === 'on', thinkingValue: document.getElementById('thinkingValue').value, inputs: ['text'], contextWindow: parseInt(document.getElementById('contextWindow').value || 200000), maxTokens: parseInt(document.getElementById('maxTokens').value || 32768, 10) };
         await apiReq('/api/model', b);
-        await apiReq('/api/restart', {});
-        await refresh();
-        /* 完成态仅用按钮动效（setLoading success）；模型思考在「接入配置」里维护 */
+        // 与顶栏「应用」一致：全局路由 + 各会话写盘 + 重启网关（电报等渠道才与磁盘一致）
+        await applyFullDeploy();
         setLoading('addBtn', false, { success: '已部署' });
         cancelEdit();
-      } catch(e) { setLoading('addBtn', false, { error: true }); }
+      } catch (e) {
+        setLoading('addBtn', false, { error: true });
+        if (e && e.message) alert(e.message);
+      }
     }
     
     async function deleteModel(r) {
@@ -3416,7 +4123,7 @@
         sessions_json: 'sessions.json 是否存在且为合法 JSON。尚无会话文件时记为可选通过。',
         primary_route: 'agents.defaults.model.primary 是否为非空的 provider/model 形式。',
         fallbacks_route: '已填写的备用顺位是否均为带 / 的 ref；未配置备用不判失败。',
-        main_session_model: '网页主会话 agent:main:main 的生效模型。可与全局 primary 不同：在运行状态「写入会话」即会话内覆盖，属正常能力；本项仅作说明，不因与全局不同而判失败。',
+        main_session_model: '网页主会话 agent:main:main 的生效模型。可与全局 primary 不同：会话内 modelOverride 属正常能力；本项仅作说明，不因与全局不同而判失败。',
         openclaw_cli: 'PATH 中能否执行 openclaw --version；未安装时记为可选，不影响管理页只读能力。',
         memory_health_report: '读取 OpenClaw 目录下 memory/health/last-health.json 的最近一次长期记忆定时检查结果；无文件为可选。',
       };
@@ -3567,6 +4274,7 @@
     ensureOpenclawVersionPoll();
     wireHomeUsageCardPoll();
     ensureUsagePollStarted();
+    wireUsageVisibilityRefresh();
     refresh();
   </script>
 </body>
