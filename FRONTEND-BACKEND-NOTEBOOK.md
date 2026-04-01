@@ -44,7 +44,8 @@
 | POST | `/api/provider/sync-remote-models` | 弹层「应用同步」 | `provider`, `remoteIds[]`（与弹窗一致的作用域）, `selectedIds[]`（可空，空则移除作用域内全部） | `{ ok, state, meta.providerSyncRemoteModels }`（`added`/`removed`、`addedCount`/`removedCount`；未改可为 `message: 无变更`） |
 | POST | `/api/provider/add-models` | 保留：仅批量追加 id（无弹窗时用） | `provider`, `ids[]` | `{ ok, state, meta.providerAddModels }` |
 | POST | `/api/provider/delete` | `deleteWholeProvider()` | `provider` | `{ ok, state, meta }`（大量清理字段） |
-| POST | `/api/probe` | `runProbe()` | `{}` | `{ ok, timestamp, checks[], summary, results }` |
+| GET | `/api/probe` | `loadProbeSummaryFromCache()` | `force=1`（可选） | 优先返回最近一份诊断缓存；无缓存时现算并写缓存。返回 `{ ok, timestamp, generatedAt, checks[], summary, results, cache }` |
+| POST | `/api/probe` | `runProbe()` | `{ force?: true }` | 手动强刷诊断；返回 `{ ok, timestamp, generatedAt, checks[], summary, results, cache }`，并更新缓存 |
 | POST | `/api/restart` | `applyFullDeploy()`、`addModel` / `deleteModel` / `deleteWholeProvider` / `restartService()` | `{}` | `{ ok, state }` |
 
 ### 已移除（勿再引用）

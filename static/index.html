@@ -1,6 +1,25 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
+  <!--
+  =============================================================================
+   OpenClaw Model Admin - 前端控制台 (微距高级排版版)
+  =============================================================================
+   [技术栈与架构]
+   1. 纯净单文件 (Single File Application)：HTML、CSS 和 JS 逻辑全部内聚于本文件。
+   2. 零框架依赖：摒弃 Vue/React，采用纯原生 DOM API (apiReq, renderFromState) 进行极速渲染。
+
+   [视觉与 UI 规范 (Claude 风格)]
+   1. 质感配色：以 --claude-bg (#f5f4f1) 和 --claude-surface 打造纸质阅读体验。
+   2. 层次感：大量应用 backdrop-filter 磨砂玻璃效果与多级柔和阴影 (--shadow-sm)。
+
+   [像素级排版与动效优化 (2026.03.25 注入)]
+   1. 沉浸式隐形滚动条：::-webkit-scrollbar 深度定制，完美融入背景。
+   2. 微距信息密度：表单标签 (Label) 引入 0.05em 字间距，提升视觉高级感。
+   3. 表格化数字对齐：全局开启 font-variant-numeric: tabular-nums，解决数字跳动。
+   4. 物理反馈动效：为 focus 和 hover 状态引入 cubic-bezier 弹性贝塞尔曲线。
+  =============================================================================
+  -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -28,12 +47,22 @@
       --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
       --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
       --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+      --ease-out-back: cubic-bezier(0.34, 1.45, 0.64, 1); /* 增加 Q 弹感的曲线 */
       --dur: 0.2s;
       --text-caption: 12px;
       --text-micro: 11px;
-      --lh-readable: 1.55;
+      --lh-readable: 1.6; /* 微调行高，提升阅读舒适度 */
       --lh-caption: 1.45;
     }
+
+    /* 全平台沉浸式滚动条美化 */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--claude-border-strong); border-radius: 10px; transition: background 0.3s; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--claude-muted); }
+
+    /* 全局数字对齐优化：让 Token、消耗数像表格一样整齐 */
+    body { font-variant-numeric: tabular-nums; }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     /* iOS：仅 body 隐藏横向溢出不够，html 也要约束，否则仍会出现整页左右拖动 */
     html {
@@ -222,8 +251,17 @@
     }
     .stat-value { font-size: 17px; font-weight: 700; line-height: 1.3; word-break: break-all; font-variant-numeric: tabular-nums; }
     .think-suffix { font-weight: 600; color: var(--claude-muted); font-size: 0.88em; }
+    .ctx-out-suffix {
+      font-weight: 600;
+      color: var(--claude-muted);
+      font-size: 0.88em;
+      font-variant-numeric: tabular-nums;
+    }
     .tab-nav {
-      display: flex;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 4px;
+      align-items: stretch;
       background: color-mix(in srgb, var(--claude-text) 5%, transparent);
       border-radius: var(--radius-sm);
       padding: 4px;
@@ -231,12 +269,23 @@
       width: 100%;
       border: 1px solid color-mix(in srgb, var(--claude-border) 80%, transparent);
     }
+    @media (min-width: 720px) {
+      .tab-nav {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+      }
+    }
     .tab-btn {
-      flex: 1;
+      min-width: 0;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      line-height: 1.25;
       background: none;
       border: none;
-      padding: 10px 6px;
-      font-size: 14px;
+      padding: 8px 6px;
+      font-size: 13px;
       font-weight: 600;
       color: var(--claude-muted);
       cursor: pointer;
@@ -252,6 +301,648 @@
     .tab-content { display: none; }
     .tab-content.active { display: block; animation: softFade 0.28s var(--ease); }
     @keyframes softFade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+    .mgmt-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+      margin: 10px 0 12px;
+    }
+    /* 管理页「刷新」：描边 + 层次对齐顶栏「重启」，略小一号 */
+    .mgmt-toolbar-refresh {
+      height: 40px;
+      min-width: 80px;
+      padding: 0 20px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border-radius: var(--radius-pill);
+      border: 1.5px solid var(--claude-border-strong) !important;
+      background: var(--claude-surface) !important;
+      color: var(--claude-text) !important;
+      box-shadow: var(--shadow-xs);
+      cursor: pointer;
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      transition:
+        background 0.2s var(--ease),
+        border-color 0.2s var(--ease),
+        color 0.2s var(--ease),
+        box-shadow 0.22s var(--ease),
+        transform 0.2s cubic-bezier(0.34, 1.2, 0.64, 1),
+        filter 0.2s var(--ease);
+    }
+    .mgmt-toolbar-refresh:hover:not(:disabled) {
+      background: var(--claude-bg-elevated) !important;
+      border-color: color-mix(in srgb, var(--claude-muted) 38%, var(--claude-border-strong)) !important;
+      box-shadow: 0 3px 12px color-mix(in srgb, var(--claude-text) 8%, transparent);
+      transform: translateY(-1px);
+    }
+    .mgmt-toolbar-refresh:active:not(:disabled) {
+      transform: translateY(0) scale(0.97);
+      box-shadow: var(--shadow-xs);
+      transition-duration: 0.08s;
+    }
+    .mgmt-toolbar-refresh:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--claude-accent-soft), var(--shadow-xs);
+    }
+    .mgmt-toolbar-refresh:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    /* 与 Skill 行内 mgmt-act-btn 一致：loading / ✓ / ✗ 阶段保持不透明，避免 :disabled 把动效洗淡 */
+    .mgmt-toolbar-refresh:disabled:has(.loading-icon),
+    .mgmt-toolbar-refresh.success:disabled,
+    .mgmt-toolbar-refresh.btn-error:disabled {
+      opacity: 1;
+    }
+    .mgmt-toolbar-refresh .loading-icon {
+      width: 16px;
+      height: 16px;
+      border-width: 2.5px;
+      border-color: rgba(26, 26, 24, 0.12);
+      border-top-color: var(--claude-text);
+    }
+    .mgmt-toolbar-refresh.success {
+      background: #ecfdf3 !important;
+      color: var(--claude-success) !important;
+      border-color: #b7e4c7 !important;
+      filter: none;
+      box-shadow: var(--shadow-xs);
+      transform: none;
+    }
+    .mgmt-toolbar-refresh.btn-error {
+      background: #fff5f5 !important;
+      color: var(--claude-danger) !important;
+      border-color: #fecaca !important;
+      filter: none;
+      transform: none;
+    }
+    .mgmt-meta {
+      font-size: 13px;
+      color: color-mix(in srgb, var(--claude-text) 72%, var(--claude-muted));
+      font-weight: 600;
+      line-height: 1.5;
+      max-width: 100%;
+    }
+    .mgmt-panel {
+      padding: 8px 12px 14px;
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-md);
+      background: var(--claude-surface);
+      box-shadow: var(--shadow-xs);
+      transition: opacity 0.22s var(--ease);
+    }
+    .mgmt-panel.mgmt-panel--refreshing {
+      opacity: 0.62;
+      pointer-events: none;
+    }
+    .mgmt-jobs-stack { display: flex; flex-direction: column; gap: 8px; padding: 4px 8px 8px; }
+    .mgmt-fold > .mgmt-jobs-stack { border-top: none; }
+    .mgmt-job-card {
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-md);
+      background: var(--claude-surface);
+      box-shadow: var(--shadow-sm);
+      padding: 13px 16px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .mgmt-job-card__top {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+    }
+    .mgmt-job-card__title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--claude-text);
+      margin: 0;
+      line-height: 1.38;
+      letter-spacing: -0.02em;
+    }
+    .mgmt-job-card__lead {
+      width: 100%;
+      min-width: 0;
+    }
+    .mgmt-job-card__pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .mgmt-datetime {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .mgmt-job-compact-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin-top: 7px;
+      font-size: 13px;
+      color: var(--claude-muted);
+      line-height: 1.5;
+    }
+    .mgmt-job-meta-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 8px;
+      min-width: 0;
+    }
+    .mgmt-job-meta-line__val {
+      color: var(--claude-text);
+      font-weight: 600;
+      word-break: break-word;
+    }
+    .mgmt-job-meta-chip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 8px;
+      min-width: 0;
+    }
+    /* 上次 / 下次独占整行排在智能体下面，避免与右侧栏对齐出现「横线」观感 */
+    .mgmt-job-meta-runs {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 7px;
+      color: var(--claude-text);
+      font-weight: 600;
+      padding-top: 1px;
+    }
+    .mgmt-job-run-line {
+      width: 100%;
+      text-align: left;
+      line-height: 1.5;
+      display: block;
+    }
+    .mgmt-job-compact-meta .k {
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      text-transform: none;
+      color: color-mix(in srgb, var(--claude-muted) 92%, var(--claude-text));
+      margin-right: 5px;
+    }
+    .mgmt-job-compact-meta code {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--claude-text);
+      word-break: break-all;
+    }
+    .mgmt-pill {
+      display: inline-flex;
+      align-items: center;
+      height: 26px;
+      padding: 0 10px;
+      border-radius: var(--radius-pill);
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      border: 1px solid var(--claude-border);
+      background: var(--claude-bg-elevated);
+      color: var(--claude-muted);
+    }
+    .mgmt-pill.on {
+      border-color: color-mix(in srgb, var(--claude-accent) 45%, var(--claude-border));
+      color: var(--claude-text);
+      background: color-mix(in srgb, var(--claude-accent-soft) 55%, var(--claude-surface));
+    }
+    .mgmt-pill.off { opacity: 0.85; }
+    .mgmt-pill.ok {
+      border-color: color-mix(in srgb, #22c55e 35%, var(--claude-border));
+      color: #15803d;
+      background: color-mix(in srgb, #22c55e 12%, var(--claude-surface));
+    }
+    .mgmt-pill.err {
+      border-color: color-mix(in srgb, #ef4444 40%, var(--claude-border));
+      color: #b91c1c;
+      background: color-mix(in srgb, #ef4444 10%, var(--claude-surface));
+    }
+    .mgmt-pill.neu { color: var(--claude-muted); }
+    .mgmt-job-details--taskbody {
+      margin-top: 0;
+    }
+    .mgmt-job-details--taskbody > summary {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: color-mix(in srgb, var(--claude-text) 58%, var(--claude-muted));
+    }
+    .mgmt-job-task-body__text {
+      margin: 8px 0 0;
+      padding: 10px 13px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--claude-bg-elevated) 88%, var(--claude-border));
+      border: 1px solid color-mix(in srgb, var(--claude-border) 90%, transparent);
+      font-size: 13px;
+      line-height: 1.58;
+      color: var(--claude-text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 320px;
+      overflow: auto;
+      font-family: var(--font-mono);
+    }
+    .mgmt-job-details--taskbody .mgmt-job-task-body__hint {
+      margin: 8px 0 0;
+      font-size: 12.5px;
+      line-height: 1.52;
+      color: var(--claude-muted);
+    }
+    .mgmt-job-dl .dt[title] { cursor: help; }
+    .mgmt-job-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding-top: 8px;
+      border-top: 1px solid color-mix(in srgb, var(--claude-border) 85%, transparent);
+    }
+    .mgmt-job-actions__primary,
+    .mgmt-job-actions__tail {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    .mgmt-job-actions__tail {
+      margin-left: auto;
+    }
+    .mgmt-act-btn {
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid var(--claude-border);
+      background: var(--claude-bg-elevated);
+      color: var(--claude-text);
+      cursor: pointer;
+      transition:
+        opacity 0.2s var(--ease),
+        transform 0.2s cubic-bezier(0.34, 1.2, 0.64, 1),
+        box-shadow 0.22s var(--ease),
+        background 0.2s var(--ease),
+        border-color 0.2s var(--ease),
+        filter 0.2s var(--ease);
+    }
+    .mgmt-act-btn:hover:not(:disabled) {
+      opacity: 0.96;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--claude-text) 8%, transparent);
+    }
+    .mgmt-act-btn:active:not(:disabled) {
+      transform: translateY(0) scale(0.96);
+      box-shadow: none;
+      transition-duration: 0.08s;
+    }
+    .mgmt-act-btn.primary {
+      background: var(--claude-accent);
+      color: #fff;
+      border-color: transparent;
+    }
+    .mgmt-act-btn.primary:hover:not(:disabled) {
+      filter: brightness(1.07);
+      box-shadow: 0 3px 12px color-mix(in srgb, var(--claude-accent) 45%, transparent);
+    }
+    .mgmt-act-btn.danger {
+      border-color: color-mix(in srgb, #ef4444 45%, var(--claude-border));
+      color: #b91c1c;
+    }
+    .mgmt-act-btn.danger:hover:not(:disabled) {
+      background: color-mix(in srgb, #fef2f2 55%, var(--claude-bg-elevated));
+    }
+    .mgmt-act-btn.ghost:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--claude-bg-elevated) 88%, var(--claude-border));
+    }
+    .mgmt-act-btn:disabled {
+      opacity: 0.42;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+      filter: none;
+    }
+    .mgmt-act-btn .loading-icon {
+      width: 13px;
+      height: 13px;
+      border: 2px solid color-mix(in srgb, var(--claude-border) 75%, transparent);
+      border-top-color: var(--claude-text);
+    }
+    .mgmt-act-btn.sm .loading-icon {
+      width: 11px;
+      height: 11px;
+      border-width: 2px;
+    }
+    .mgmt-act-btn.success {
+      background: #ecfdf3 !important;
+      color: #15803d !important;
+      border-color: #b7e4c7 !important;
+      filter: none;
+      box-shadow: none;
+      opacity: 1;
+    }
+    .mgmt-act-btn.primary.success {
+      background: var(--claude-success) !important;
+      color: #fff !important;
+      border-color: var(--claude-success) !important;
+    }
+    .mgmt-act-btn.btn-error {
+      background: #fff5f5 !important;
+      color: var(--claude-danger) !important;
+      border-color: #fecaca !important;
+      filter: none;
+      box-shadow: none;
+      opacity: 1;
+    }
+    .mgmt-act-btn.sm {
+      height: 30px;
+      padding: 0 11px;
+      font-size: 11px;
+      border-radius: 8px;
+    }
+    .mgmt-act-btn.ghost {
+      background: transparent;
+      color: var(--claude-muted);
+    }
+    .mgmt-job-details {
+      margin: 0;
+      border-radius: 9px;
+      background: var(--claude-bg-elevated);
+      border: 1px solid var(--claude-border);
+      padding: 9px 11px;
+      font-size: 12.5px;
+    }
+    .mgmt-job-details summary {
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 12.5px;
+      color: color-mix(in srgb, var(--claude-text) 48%, var(--claude-muted));
+      letter-spacing: 0;
+    }
+    .mgmt-job-details .body {
+      margin-top: 10px;
+      color: var(--claude-text);
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12.5px;
+    }
+    .mgmt-job-card > .mgmt-job-details + .mgmt-job-details { margin-top: 6px; }
+    .mgmt-job-details-struct {
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .mgmt-job-dl {
+      display: grid;
+      grid-template-columns: 82px minmax(0, 1fr);
+      gap: 7px 11px;
+      font-size: 12px;
+      align-items: start;
+    }
+    .mgmt-job-dl .dt {
+      color: var(--claude-muted);
+      font-weight: 600;
+      font-size: 11.5px;
+      letter-spacing: 0;
+    }
+    .mgmt-job-dl .dd { color: var(--claude-text); line-height: 1.48; word-break: break-word; font-size: 12px; }
+    .mgmt-job-dl .dd code {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      word-break: break-all;
+    }
+    .mgmt-section { margin-bottom: 22px; }
+    .mgmt-section:last-child { margin-bottom: 0; }
+    .mgmt-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 10px 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--claude-border);
+    }
+    .mgmt-section-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--claude-text);
+      letter-spacing: 0.02em;
+    }
+    .mgmt-section-badge {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--claude-muted);
+      background: var(--claude-surface);
+      padding: 4px 11px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--claude-border);
+    }
+    .mgmt-fold {
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-md);
+      background: var(--claude-surface);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .mgmt-fold > summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--claude-text);
+      background: color-mix(in srgb, var(--claude-bg-elevated) 50%, var(--claude-surface));
+      border-bottom: 1px solid var(--claude-border);
+      user-select: none;
+      transition: background 0.18s var(--ease), color 0.18s var(--ease);
+    }
+    .mgmt-fold > summary:hover {
+      background: color-mix(in srgb, var(--claude-bg-elevated) 72%, var(--claude-surface));
+    }
+    .mgmt-fold > summary::-webkit-details-marker { display: none; }
+    .mgmt-fold__count {
+      font-size: 12px;
+      font-weight: 800;
+      color: color-mix(in srgb, var(--claude-text) 55%, var(--claude-muted));
+      background: var(--claude-surface);
+      padding: 4px 11px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--claude-border);
+    }
+    .mgmt-fold > .mgmt-skill-rows { border-top: none; padding: 2px 0 6px; }
+    .mgmt-skill-rows { margin: 0; padding: 0; }
+    .mgmt-skill-subhead {
+      padding: 8px 12px 7px;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--claude-muted);
+      letter-spacing: 0.06em;
+      text-transform: none;
+      background: color-mix(in srgb, var(--claude-bg-elevated) 55%, var(--claude-surface));
+      border-bottom: 1px solid var(--claude-border);
+    }
+    .mgmt-skill-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px 14px;
+      padding: 10px 12px;
+      border-bottom: 1px solid color-mix(in srgb, var(--claude-border) 82%, transparent);
+    }
+    .mgmt-skill-row:last-child { border-bottom: none; }
+    .mgmt-skill-row__main { flex: 1 1 240px; min-width: 0; }
+    .mgmt-skill-row__namebar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 8px;
+      margin: 0 0 4px;
+    }
+    .mgmt-skill-row__name { font-size: 13px; font-weight: 800; color: var(--claude-text); margin: 0; }
+    .mgmt-skill-pill {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: var(--radius-pill);
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid var(--claude-border);
+    }
+    .mgmt-skill-pill--custom {
+      color: var(--claude-text);
+      background: color-mix(in srgb, var(--claude-accent-soft) 50%, var(--claude-surface));
+      border-color: color-mix(in srgb, var(--claude-accent) 35%, var(--claude-border));
+    }
+    .mgmt-skill-pill--builtin {
+      color: var(--claude-muted);
+      background: var(--claude-bg-elevated);
+    }
+    .mgmt-skill-src {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--claude-muted);
+      margin-top: 4px;
+      font-family: var(--font-mono);
+      word-break: break-all;
+    }
+    .mgmt-skill-row__desc { font-size: 12px; line-height: 1.5; color: var(--claude-muted); margin: 0; }
+    .mgmt-skill-row__acts {
+      flex: 0 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .mgmt-card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 10px;
+      padding: 2px 0 6px;
+    }
+    .mgmt-fold > .mgmt-card-grid {
+      border-top: none;
+      padding: 6px 8px 10px;
+      margin: 0;
+    }
+    .mgmt-agent-card {
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-md);
+      background: var(--claude-surface);
+      padding: 11px 12px 10px;
+      box-shadow: var(--shadow-xs);
+    }
+    .mgmt-agent-card__acts {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid color-mix(in srgb, var(--claude-border) 85%, transparent);
+    }
+    .mgmt-agent-card__name {
+      font-weight: 800;
+      font-size: 13px;
+      margin-bottom: 8px;
+      color: var(--claude-text);
+      letter-spacing: -0.01em;
+    }
+    .mgmt-mini-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px 12px;
+      font-size: 12px;
+      margin-bottom: 4px;
+      color: var(--claude-muted);
+    }
+    .mgmt-mini-row:last-child { margin-bottom: 0; }
+    .mgmt-mini-row .k { font-weight: 700; flex-shrink: 0; }
+    .mgmt-mini-row .v {
+      text-align: right;
+      word-break: break-all;
+      color: var(--claude-text);
+      font-size: 12px;
+    }
+    .mgmt-mini-row code { font-size: 11px; font-family: var(--font-mono); }
+    .mgmt-source {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      font-size: 10px;
+      font-weight: 700;
+      background: color-mix(in srgb, var(--claude-accent-soft) 50%, var(--claude-border));
+      color: var(--claude-muted);
+      white-space: nowrap;
+    }
+    .mgmt-empty {
+      padding: 28px 16px;
+      text-align: center;
+      color: var(--claude-muted);
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+    .mgmt-config-strip {
+      font-size: 12px;
+      color: var(--claude-text);
+      line-height: 1.5;
+      padding: 12px 14px;
+      background: var(--claude-surface);
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius-md);
+      margin-bottom: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(188px, 1fr));
+      gap: 10px 16px;
+      box-shadow: var(--shadow-xs);
+    }
+    .mgmt-config-strip strong { color: var(--claude-muted); font-weight: 800; margin-right: 6px; font-size: 10px; letter-spacing: 0.05em; }
     .callout {
       font-size: var(--text-caption);
       color: var(--claude-muted);
@@ -315,17 +1006,18 @@
       border: 1px solid var(--claude-border);
       border-radius: var(--radius-sm);
       padding: 10px 14px;
-      font-size: 16px !important;
+      font-size: 15px !important;
       color: var(--claude-text);
       outline: none;
-      transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+      transition: all var(--dur) var(--ease); /* 统一过渡时间 */
       width: 100%;
       height: 44px;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.01);
     }
     select:hover, input:hover { border-color: var(--claude-border-strong); }
     select:focus, input:focus {
       border-color: var(--claude-accent);
-      box-shadow: 0 0 0 3px var(--claude-accent-soft);
+      box-shadow: 0 0 0 3px var(--claude-accent-soft), 0 2px 4px rgba(200, 107, 74, 0.05); /* 更优雅的聚焦圈 */
     }
     select {
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%235c5c56'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
@@ -344,7 +1036,16 @@
     .form-grid-2 select { min-width: 0; }
     .form-stack { display: grid; gap: 12px; }
     .form-group { margin-bottom: 0; }
-    .form-group label { display: block; font-size: 12px; font-weight: 700; color: var(--claude-muted); margin-bottom: 7px; letter-spacing: 0.02em; }
+    .form-group label {
+      display: block;
+      font-size: 11px; /* 略微减小字号，增加高级感 */
+      font-weight: 700;
+      color: var(--claude-muted);
+      margin-bottom: 7px;
+      letter-spacing: 0.05em; /* 关键：微距排版增加信息密度 */
+      text-transform: none;
+      line-height: 1.3;
+    }
     .hint { display: block; margin-top: 6px; font-size: 11px; color: var(--claude-muted); line-height: 1.45; }
     .hint-tight { display: block; margin-top: 4px; font-size: 10px; color: var(--claude-muted); line-height: 1.38; }
     .hint-accent { display: none; color: var(--claude-accent); font-size: 10px; font-weight: 700; margin-top: 4px; }
@@ -482,6 +1183,71 @@
       background: var(--claude-bg-elevated);
     }
     .runtime-panel--top { margin-top: 0; margin-bottom: 16px; }
+    .local-tool-settings-card { margin-top: 0; }
+    .local-tool-lead {
+      margin: -4px 0 14px;
+      font-size: 11px;
+      color: var(--claude-muted);
+      line-height: 1.5;
+    }
+    .local-tool-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    @media (max-width: 920px) {
+      .local-tool-grid { grid-template-columns: 1fr; }
+    }
+    .local-tool-block {
+      border: 1px solid color-mix(in srgb, var(--claude-border) 82%, transparent);
+      border-radius: var(--radius-sm);
+      background: color-mix(in srgb, var(--claude-bg-elevated) 74%, var(--claude-surface));
+      padding: 16px;
+      box-shadow: var(--shadow-xs);
+      min-width: 0;
+    }
+    .local-tool-head {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .local-tool-name {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--claude-text);
+      line-height: 1.25;
+    }
+    .local-tool-sub {
+      margin: 4px 0 0;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--claude-muted);
+      line-height: 1.35;
+    }
+    .local-tool-path {
+      margin: 0;
+      font-size: 11px;
+      line-height: 1.5;
+      font-family: var(--font-mono);
+      color: var(--claude-muted);
+      word-break: break-all;
+    }
+    .local-tool-status {
+      margin: 0;
+      min-height: 18px;
+      line-height: 1.5;
+    }
+    .local-tool-status.is-error { color: var(--claude-danger); }
+    .local-tool-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }
+    .local-tool-actions .primary { min-width: 136px; }
     button {
       height: 46px;
       border-radius: var(--radius-sm);
@@ -638,6 +1404,13 @@
       word-break: break-word;
     }
     .library-model-head .think-suffix { flex-shrink: 0; }
+    .library-model-ctxout-row {
+      display: flex;
+      justify-content: flex-end;
+      width: 100%;
+      margin: -6px 0 10px 0;
+    }
+    .library-model-ctxout-row .ctx-out-suffix { flex-shrink: 0; }
     .library-model-meta {
       display: flex;
       flex-direction: column;
@@ -733,14 +1506,16 @@
       z-index: 100;
       box-shadow: 0 -4px 20px rgba(26, 26, 24, 0.05);
     }
-    .dock .diag-info { min-width: 0; flex: 1; }
-    .status-msg { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .dock .diag-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .status-msg { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
     .status-msg small { font-weight: 500; }
     .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--claude-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--claude-success) 22%, transparent); flex-shrink: 0; }
     .status-dot.error { background: var(--claude-danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--claude-danger) 20%, transparent); }
     .probe-abnormal { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
     .probe-pill { font-size: var(--text-micro); color: var(--claude-danger); background: #fff5f5; border: 1px solid #fecaca; padding: 3px 9px; border-radius: var(--radius-pill); font-weight: 700; letter-spacing: 0.02em; line-height: var(--lh-caption); }
-    .probe-summary-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+    .probe-summary-row { display: flex; align-items: center; gap: 8px 12px; min-width: 0; }
+    .probe-summary-main { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .probe-summary-meta { font-size: 12px; color: var(--claude-muted); line-height: 1.45; min-height: 18px; }
     .probe-detail-link {
       font-size: 12px;
       font-weight: 700;
@@ -1389,6 +2164,57 @@
       font-variant-numeric: tabular-nums;
       font-weight: 600;
     }
+    .ocma-usage-session-collapsible {
+      margin-top: 4px;
+    }
+    .ocma-usage-session-toggle {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+      background: var(--claude-bg-elevated);
+      border: 1px solid var(--claude-border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      cursor: pointer;
+      margin: 0;
+      font: inherit;
+      color: inherit;
+      box-shadow: var(--shadow-xs);
+    }
+    .ocma-usage-session-toggle:hover {
+      background: color-mix(in srgb, var(--claude-bg-hover) 55%, var(--claude-bg-elevated));
+    }
+    .ocma-usage-session-toggle:focus-visible {
+      outline: 2px solid var(--claude-accent);
+      outline-offset: 2px;
+    }
+    .ocma-usage-session-toggle-chevron {
+      flex-shrink: 0;
+      width: 1.1em;
+      line-height: 1.2;
+      color: var(--claude-muted);
+      font-size: 12px;
+      transition: transform 0.15s ease;
+    }
+    .ocma-usage-session-collapsible.is-open .ocma-usage-session-toggle-chevron {
+      transform: rotate(90deg);
+    }
+    .ocma-usage-session-toggle-text {
+      flex: 1;
+      min-width: 0;
+    }
+    .ocma-usage-session-toggle-label {
+      margin: 0 0 2px 0;
+      display: block;
+    }
+    .ocma-usage-session-list-wrap {
+      margin-top: 8px;
+    }
+    .ocma-usage-session-list-wrap[hidden] {
+      display: none !important;
+    }
     .ocma-usage-session-list {
       border: 1px solid var(--claude-border);
       border-radius: var(--radius);
@@ -1603,6 +2429,9 @@
       <button type="button" class="tab-btn active" data-tab="tab-routing" onclick="switchTab('tab-routing')">路由设置</button>
       <button type="button" class="tab-btn" data-tab="tab-library" onclick="switchTab('tab-library')">模型库</button>
       <button type="button" class="tab-btn" data-tab="tab-add" onclick="switchTab('tab-add')">接入配置</button>
+      <button type="button" class="tab-btn" data-tab="tab-tasks" onclick="switchTab('tab-tasks')">任务管理</button>
+      <button type="button" class="tab-btn" data-tab="tab-skills" onclick="switchTab('tab-skills')">Skill 管理</button>
+      <button type="button" class="tab-btn" data-tab="tab-agents" onclick="switchTab('tab-agents')">智能体管理</button>
     </div>
     <div id="tab-routing" class="tab-content active">
       <div class="routing-container">
@@ -1636,6 +2465,114 @@
             <span class="field-label" style="align-self:center;">备份顺位 2</span>
             <div class="route-inputs" style="flex:1;min-width:0;"><select id="f2Provider"></select><div class="route-sep">/</div><select id="f2Model"></select></div>
           </div>
+        </div>
+      </div>
+      <div class="route-card local-tool-settings-card" id="localToolSettingsCard">
+        <div class="route-title">本机 Claude / Codex</div>
+        <p class="local-tool-lead">调这台机器上的 Claude Code 与 Codex CLI 默认模型；独立保存，不会写入 OpenClaw 路由，也不会触发网关重启。</p>
+        <div class="local-tool-grid">
+          <section class="local-tool-block" aria-labelledby="localClaudeHeading">
+            <div class="local-tool-head">
+              <div>
+                <h3 class="local-tool-name" id="localClaudeHeading">Claude Code</h3>
+                <p class="local-tool-sub">用户级 settings.json</p>
+              </div>
+              <p class="local-tool-path" id="localClaudePath">—</p>
+            </div>
+            <div class="form-stack">
+              <div class="form-group">
+                <label class="field-label--block">借用 OpenClaw</label>
+                <div class="route-inputs">
+                  <select id="localClaudeBorrowProvider" onchange="syncLocalClaudeBorrowModels()"></select>
+                  <div class="route-sep">/</div>
+                  <select id="localClaudeBorrowModel" onchange="applyLocalClaudeBorrowSelection()"></select>
+                </div>
+                <span class="hint-tight">仅显示 Claude / Anthropic 兼容线路；保存时会把 OpenClaw 的 endpoint 与密钥同步到 Claude 设置。</span>
+              </div>
+              <div class="form-group">
+                <label for="localClaudeModel">默认模型</label>
+                <input id="localClaudeModel" type="text" class="input-tall" placeholder="如：sonnet 或 claude-sonnet-4-6">
+              </div>
+              <div class="form-group">
+                <label for="localClaudeBaseUrl">Base URL</label>
+                <input id="localClaudeBaseUrl" type="text" placeholder="可留空；借用时自动带入">
+              </div>
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label for="localClaudeSonnetModel">Sonnet 别名映射</label>
+                  <input id="localClaudeSonnetModel" type="text" placeholder="可留空">
+                </div>
+                <div class="form-group">
+                  <label for="localClaudeOpusModel">Opus 别名映射</label>
+                  <input id="localClaudeOpusModel" type="text" placeholder="可留空">
+                </div>
+              </div>
+              <p class="hint-tight local-tool-status" id="localClaudeStatus">读取中…</p>
+            </div>
+            <div class="local-tool-actions">
+              <button type="button" class="primary" id="saveClaudeBtn" onclick="saveLocalClaudeSettings()">保存 Claude</button>
+            </div>
+          </section>
+          <section class="local-tool-block" aria-labelledby="localCodexHeading">
+            <div class="local-tool-head">
+              <div>
+                <h3 class="local-tool-name" id="localCodexHeading">Codex CLI</h3>
+                <p class="local-tool-sub">本机 config.toml</p>
+              </div>
+              <p class="local-tool-path" id="localCodexPath">—</p>
+            </div>
+            <div class="form-stack">
+              <div class="form-group">
+                <label class="field-label--block">借用 OpenClaw</label>
+                <div class="route-inputs">
+                  <select id="localCodexBorrowProvider" onchange="syncLocalCodexBorrowModels()"></select>
+                  <div class="route-sep">/</div>
+                  <select id="localCodexBorrowModel" onchange="applyLocalCodexBorrowSelection()"></select>
+                </div>
+                <span class="hint-tight">保存时会按 Codex 自身配置规则转换 OpenClaw 的 provider / model / endpoint，并把密钥写入 <code>~/.codex/.env</code>。</span>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label for="localCodexProvider">供应商</label>
+                  <select id="localCodexProvider" onchange="syncLocalCodexProviderFieldsFromSelection()"></select>
+                </div>
+                <div class="form-group">
+                  <label for="localCodexModel">默认模型</label>
+                  <input id="localCodexModel" type="text" placeholder="如：gpt-5.4">
+                </div>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label for="localCodexReasoningEffort">推理强度</label>
+                  <select id="localCodexReasoningEffort">
+                    <option value="">默认</option>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="xhigh">xhigh</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="localCodexProviderName">供应商显示名</label>
+                  <input id="localCodexProviderName" type="text" placeholder="如：0chat">
+                </div>
+              </div>
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label for="localCodexBaseUrl">Base URL</label>
+                  <input id="localCodexBaseUrl" type="text" placeholder="https://...">
+                </div>
+                <div class="form-group">
+                  <label for="localCodexWireApi">Wire API</label>
+                  <input id="localCodexWireApi" type="text" placeholder="如：responses">
+                </div>
+              </div>
+              <p class="hint-tight local-tool-status" id="localCodexStatus">读取中…</p>
+            </div>
+            <div class="local-tool-actions">
+              <button type="button" class="primary" id="saveCodexBtn" onclick="saveLocalCodexSettings()">保存 Codex</button>
+            </div>
+          </section>
         </div>
       </div>
       <details class="collapsible page-meta-bottom home-usage-details" id="homeUsageCard">
@@ -1743,14 +2680,50 @@
         </div>
       </div>
     </div>
+    <div id="tab-tasks" class="tab-content">
+      <div class="route-card">
+        <div class="route-title">任务管理</div>
+        <div class="mgmt-toolbar">
+          <button type="button" class="mgmt-toolbar-refresh" id="mgmtTasksRefreshBtn">刷新</button>
+          <span class="mgmt-meta" id="mgmtTasksMeta"></span>
+        </div>
+        <div id="mgmtTasksErr" class="callout callout-muted" style="display:none;margin-bottom:12px;"></div>
+        <div class="mgmt-panel" id="mgmtTasksTableWrap"><div class="mgmt-empty" id="mgmtTasksPlaceholder">切换到本标签时自动加载…</div></div>
+      </div>
+    </div>
+    <div id="tab-skills" class="tab-content">
+      <div class="route-card">
+        <div class="route-title">Skill 管理</div>
+        <div class="mgmt-toolbar">
+          <button type="button" class="mgmt-toolbar-refresh" id="mgmtSkillsRefreshBtn">刷新</button>
+          <span class="mgmt-meta" id="mgmtSkillsMeta"></span>
+        </div>
+        <div id="mgmtSkillsErr" class="callout callout-muted" style="display:none;margin-bottom:12px;"></div>
+        <div class="mgmt-panel" id="mgmtSkillsTableWrap"><div class="mgmt-empty" id="mgmtSkillsPlaceholder">切换到本标签时自动加载…</div></div>
+      </div>
+    </div>
+    <div id="tab-agents" class="tab-content">
+      <div class="route-card">
+        <div class="route-title">智能体管理</div>
+        <div class="mgmt-toolbar">
+          <button type="button" class="mgmt-toolbar-refresh" id="mgmtAgentsCreateBtn" title="调用网关 agents.create；若失败请检查 openclaw gateway 与本页所用 token/url">新建智能体</button>
+          <button type="button" class="mgmt-toolbar-refresh" id="mgmtAgentsRefreshBtn">刷新</button>
+          <span class="mgmt-meta" id="mgmtAgentsMeta"></span>
+        </div>
+        <div id="mgmtAgentsErr" class="callout callout-muted" style="display:none;margin-bottom:12px;"></div>
+        <div id="mgmtAgentsSummary"></div>
+        <div class="mgmt-panel" id="mgmtAgentsTableWrap"><div class="mgmt-empty" id="mgmtAgentsPlaceholder">切换到本标签时自动加载…</div></div>
+      </div>
+    </div>
   </div>
   <div id="toastMini" role="status" aria-live="polite"></div>
   <div class="dock">
     <div class="diag-info">
       <div class="probe-summary-row">
-        <div id="probeSummary" class="status-msg">等待诊断扫描…</div>
+        <div id="probeSummary" class="status-msg"><span class="probe-summary-main">等待诊断扫描…</span></div>
         <button type="button" class="probe-detail-link" id="probeDetailOpenBtn" disabled onclick="openProbeDetailModal()">查看明细</button>
       </div>
+      <div id="probeSummaryMeta" class="probe-summary-meta"></div>
       <div id="probeAbnormal" class="probe-abnormal"></div>
     </div>
     <button class="primary btn-dock-probe" id="probeBtn" onclick="runProbe()">一键诊断</button>
@@ -1796,6 +2769,8 @@
     /** 远端模型弹窗：须与勾选结果一并提交 remoteIds 作为「可移除」作用域 */
     let fetchModelsModalCtx = null;
     const MODEL_TEST_STORAGE_KEY = 'openclaw-model-admin-model-test-v1';
+    let localClaudeBorrowRef = '';
+    let localCodexBorrowRef = '';
     /** 用 data-tab 定位，避免 [onclick*="tab-xxx"] 误匹配模型库里 onclick 路径子串导致标签失灵 */
     function switchTab(t) {
       const id = typeof t === 'string' ? t : (t && t.id);
@@ -1808,12 +2783,1133 @@
       const btn = nav ? nav.querySelector('.tab-btn[data-tab="' + id.replace(/"/g, '') + '"]') : null;
       if (btn) btn.classList.add('active');
       panel.classList.add('active');
+      refreshMgmtPanelIfNeeded(id);
+    }
+    /** 本地 YYYY-MM-DD + 不间断空格 + HH:mm:ss，避免 locale 把日期与时间拆成两行 */
+    function mgmtFmtTime(ms) {
+      if (ms == null || ms === '' || !isFinite(Number(ms))) return '—';
+      try {
+        var d = new Date(Number(ms));
+        if (isNaN(d.getTime())) return '—';
+        var y = d.getFullYear();
+        var mo = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        var h = String(d.getHours()).padStart(2, '0');
+        var mi = String(d.getMinutes()).padStart(2, '0');
+        var s = String(d.getSeconds()).padStart(2, '0');
+        return y + '-' + mo + '-' + day + '\u00A0' + h + ':' + mi + ':' + s;
+      } catch (_) {
+        return '—';
+      }
+    }
+    function mgmtFmtTimeHtml(ms) {
+      var t = mgmtFmtTime(ms);
+      if (t === '—') return '—';
+      return '<span class="mgmt-datetime">' + escHtml(t) + '</span>';
+    }
+    function mgmtSourceZh(s) {
+      if (s === 'workspace') return '工作区';
+      if (s === 'user') return '用户';
+      if (s === 'bundled') return '内置';
+      return s || '—';
+    }
+    function setMgmtErr(id, msg) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (msg) {
+        el.style.display = 'block';
+        el.textContent = msg;
+      } else {
+        el.style.display = 'none';
+        el.textContent = '';
+      }
+    }
+    function mgmtAppendCacheHint(metaEl, d) {
+      if (!metaEl || !d || !d.metaCache) return;
+      var c = d.metaCache;
+      if (c.hit === true && c.ageMs != null && isFinite(Number(c.ageMs))) {
+        metaEl.textContent += ' · 缓存命中 · 约 ' + (Number(c.ageMs) / 1000).toFixed(1) + 's 前';
+      }
+    }
+    /** 管理页 /api/mgmt/*：按服务端 metaCache 对当前 Tab 做软刷新（无 refresh=1），与 OPENCLAW_ADMIN_MGMT_CACHE_TTL_SEC 对齐 */
+    var MGMT_STALE_MIN_MS = 8000;
+    var MGMT_STALE_MAX_MS = 120000;
+    var MGMT_STALE_ERR_RETRY_MS = 28000;
+    var _mgmtStaleSched = { tasks: null, skills: null, agents: null };
+    function mgmtClearStaleTimer(panel) {
+      var st = _mgmtStaleSched[panel];
+      if (st && st.tid) {
+        clearTimeout(st.tid);
+        st.tid = null;
+      }
+    }
+    function mgmtStaleDelayFromMeta(meta) {
+      if (!meta || !isFinite(Number(meta.ttlSec)) || Number(meta.ttlSec) <= 0) return 0;
+      var base =
+        meta.revalidateAfterMs != null && isFinite(Number(meta.revalidateAfterMs)) && Number(meta.revalidateAfterMs) > 0
+          ? Number(meta.revalidateAfterMs)
+          : Number(meta.ttlSec) * 1000;
+      base = Math.max(MGMT_STALE_MIN_MS, Math.min(MGMT_STALE_MAX_MS, base));
+      if (meta.hit === true && meta.ageMs != null && isFinite(Number(meta.ageMs))) {
+        var left = base - Number(meta.ageMs);
+        if (left < MGMT_STALE_MIN_MS) left = MGMT_STALE_MIN_MS;
+        return left;
+      }
+      return base;
+    }
+    function mgmtRegisterPanelStaleSchedule(panel, meta) {
+      mgmtClearStaleTimer(panel);
+      var delay = 0;
+      if (meta && meta._errRetry) {
+        delay = MGMT_STALE_ERR_RETRY_MS;
+      } else if (meta && isFinite(Number(meta.ttlSec)) && Number(meta.ttlSec) > 0) {
+        delay = mgmtStaleDelayFromMeta(meta);
+      } else {
+        _mgmtStaleSched[panel] = null;
+        return;
+      }
+      _mgmtStaleSched[panel] = { tid: null, meta: meta };
+      _mgmtStaleSched[panel].tid = setTimeout(function () {
+        mgmtStaleTimerFire(panel);
+      }, delay);
+    }
+    function mgmtStaleRescheduleDeferred(panel, prevMeta) {
+      if (prevMeta && prevMeta._errRetry) {
+        mgmtRegisterPanelStaleSchedule(panel, { ttlSec: 1, _errRetry: true });
+        return;
+      }
+      var ts =
+        prevMeta && isFinite(Number(prevMeta.ttlSec)) && Number(prevMeta.ttlSec) > 0 ? Number(prevMeta.ttlSec) : 45;
+      mgmtRegisterPanelStaleSchedule(panel, { ttlSec: ts, hit: false });
+    }
+    function mgmtStaleTimerFire(panel) {
+      var st = _mgmtStaleSched[panel];
+      if (st) st.tid = null;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        mgmtStaleRescheduleDeferred(panel, st && st.meta);
+        return;
+      }
+      var tabMap = { tasks: 'tab-tasks', skills: 'tab-skills', agents: 'tab-agents' };
+      if (getActiveTabContentId() !== tabMap[panel]) {
+        mgmtStaleRescheduleDeferred(panel, st && st.meta);
+        return;
+      }
+      if (panel === 'tasks') loadMgmtTasks(false).catch(function () {});
+      else if (panel === 'skills') loadMgmtSkills(false).catch(function () {});
+      else if (panel === 'agents') loadMgmtAgents(false).catch(function () {});
+    }
+    function mgmtOnMgmtPayloadRendered(panelKey, d) {
+      if (!d) {
+        mgmtClearStaleTimer(panelKey);
+        _mgmtStaleSched[panelKey] = null;
+        return;
+      }
+      if (d.ok !== true) {
+        mgmtRegisterPanelStaleSchedule(panelKey, { ttlSec: 1, _errRetry: true });
+        return;
+      }
+      if (!d.metaCache) return;
+      mgmtRegisterPanelStaleSchedule(panelKey, d.metaCache);
+    }
+    function mgmtRestartStaleTimersAfterVisible() {
+      ['tasks', 'skills', 'agents'].forEach(function (p) {
+        var st = _mgmtStaleSched[p];
+        mgmtClearStaleTimer(p);
+        if (!st || !st.meta) return;
+        var delay = st.meta._errRetry ? MGMT_STALE_ERR_RETRY_MS : mgmtStaleDelayFromMeta(st.meta);
+        if (delay <= 0) delay = MGMT_STALE_MIN_MS;
+        st.tid = setTimeout(function () {
+          mgmtStaleTimerFire(p);
+        }, delay);
+      });
+    }
+    /** 重绘前记录展开的分组，避免点按钮刷新后外层折叠被关掉 */
+    function mgmtCollectOpenFoldKeys(wrapId) {
+      var w = document.getElementById(wrapId);
+      if (!w) return {};
+      var out = {};
+      var nodes = w.querySelectorAll('.mgmt-fold[data-mgmt-fold-key]');
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        if (el.open) {
+          var k = el.getAttribute('data-mgmt-fold-key');
+          if (k) out[k] = true;
+        }
+      }
+      return out;
+    }
+    function mgmtApplyOpenFoldKeys(wrapId, keys) {
+      if (!keys || typeof keys !== 'object') return;
+      var w = document.getElementById(wrapId);
+      if (!w) return;
+      var nodes = w.querySelectorAll('.mgmt-fold[data-mgmt-fold-key]');
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        var k = el.getAttribute('data-mgmt-fold-key');
+        if (k && keys[k]) el.setAttribute('open', '');
+      }
+    }
+    async function mgmtFetchJson(url, opts) {
+      opts = opts || {};
+      var u = url;
+      if (opts.forceRefresh) {
+        u += (url.indexOf('?') >= 0 ? '&' : '?') + 'refresh=1';
+      }
+      const r = await fetch(u, { cache: 'no-store', credentials: 'same-origin' });
+      let raw = '';
+      try {
+        raw = await r.text();
+      } catch (e) {
+        return { ok: false, error: '读取响应失败' };
+      }
+      let d = null;
+      try {
+        d = JSON.parse(raw);
+      } catch (e) {
+        return {
+          ok: false,
+          error: '非 JSON（HTTP ' + r.status + '）。若刚升级管理端请先 systemctl restart openclaw-model-admin',
+        };
+      }
+      if (!r.ok && (!d || typeof d !== 'object')) {
+        return { ok: false, error: 'HTTP ' + r.status };
+      }
+      return d;
+    }
+    async function mgmtPostJson(url, body) {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body && typeof body === 'object' ? body : {}),
+      });
+      let raw = '';
+      try {
+        raw = await r.text();
+      } catch (e) {
+        return { ok: false, error: '读取响应失败' };
+      }
+      let d = null;
+      try {
+        d = JSON.parse(raw);
+      } catch (e) {
+        return { ok: false, error: '非 JSON 响应（HTTP ' + r.status + '）' };
+      }
+      return d;
+    }
+    function bindMgmtCronCardActions() {
+      var root = document.getElementById('mgmtTasksTableWrap');
+      if (!root || root._cronActBound) return;
+      root._cronActBound = true;
+      root.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.closest) return;
+        var btn = t.closest('[data-mgmt-cron-act]');
+        if (!btn || btn.disabled) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        var act = btn.getAttribute('data-mgmt-cron-act');
+        var card = btn.closest('[data-cron-job-id]');
+        var id = card && card.getAttribute('data-cron-job-id');
+        if (!id) return;
+        if (act === 'run') {
+          btn.disabled = true;
+          mgmtPostJson('/api/mgmt/cron/run', { id: id, mode: 'force' })
+            .then(function (d) {
+              if (!d || !d.ok) showToast((d && d.error) || '执行失败', 3400);
+              else {
+                showToast('已请求立即执行');
+                loadMgmtTasks(true);
+              }
+            })
+            .catch(function () {
+              showToast('网络错误', 3000);
+            })
+            .then(function () {
+              btn.disabled = false;
+            });
+          return;
+        }
+        if (act === 'enable') {
+          btn.disabled = true;
+          mgmtPostJson('/api/mgmt/cron/set-enabled', { id: id, enabled: true })
+            .then(function (d) {
+              if (!d || !d.ok) showToast((d && d.error) || '启用失败', 3400);
+              else {
+                showToast('已启用');
+                _mgmtCronPostActionFoldHint = 'cron-on';
+                loadMgmtTasks(true);
+              }
+            })
+            .catch(function () {
+              showToast('网络错误', 3000);
+            })
+            .then(function () {
+              btn.disabled = false;
+            });
+          return;
+        }
+        if (act === 'disable') {
+          btn.disabled = true;
+          mgmtPostJson('/api/mgmt/cron/set-enabled', { id: id, enabled: false })
+            .then(function (d) {
+              if (!d || !d.ok) showToast((d && d.error) || '停用失败', 3400);
+              else {
+                showToast('已停用');
+                _mgmtCronPostActionFoldHint = 'cron-off';
+                loadMgmtTasks(true);
+              }
+            })
+            .catch(function () {
+              showToast('网络错误', 3000);
+            })
+            .then(function () {
+              btn.disabled = false;
+            });
+          return;
+        }
+        if (act === 'remove') {
+          if (!confirm('确定移除该计划任务？将从网关删除且不可恢复。')) return;
+          btn.disabled = true;
+          mgmtPostJson('/api/mgmt/cron/remove', { id: id })
+            .then(function (d) {
+              if (!d || !d.ok) showToast((d && d.error) || '移除失败', 3600);
+              else {
+                showToast('已移除');
+                loadMgmtTasks(true);
+              }
+            })
+            .catch(function () {
+              showToast('网络错误', 3000);
+            })
+            .then(function () {
+              btn.disabled = false;
+            });
+        }
+      });
+    }
+    function bindMgmtSkillRowActions() {
+      var root = document.getElementById('mgmtSkillsTableWrap');
+      if (!root || root._skillActBound) return;
+      root._skillActBound = true;
+      root.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.closest) return;
+        var btn = t.closest('[data-mgmt-skill-act]');
+        if (!btn || btn.disabled) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        var act = btn.getAttribute('data-mgmt-skill-act');
+        var row = btn.closest('[data-skill-key]');
+        var key = row && row.getAttribute('data-skill-key');
+        var bd = row && row.getAttribute('data-base-dir');
+        if (!key) return;
+        if (act === 'enable' || act === 'disable') {
+          applyInlineButtonLoading(btn, true);
+          mgmtPostJson('/api/mgmt/skills/set-enabled', {
+            skillKey: key,
+            enabled: act === 'enable',
+          })
+            .then(function (d) {
+              if (!d || !d.ok) {
+                applyInlineButtonLoading(btn, false, { error: true });
+              } else {
+                _mgmtSkillPreserveOpenFolds = mgmtCollectOpenFoldKeys('mgmtSkillsTableWrap');
+                _mgmtSkillPostActionFoldHint = act === 'enable' ? 'skill-active' : 'skill-off';
+                loadMgmtSkills(true);
+              }
+            })
+            .catch(function () {
+              applyInlineButtonLoading(btn, false, { error: true });
+            });
+          return;
+        }
+        if (act === 'remove') {
+          var skillFoldsSnap = mgmtCollectOpenFoldKeys('mgmtSkillsTableWrap');
+          if (
+            !confirm(
+              '将删除 workspace/skills 或 ~/.openclaw/skills 下名为「' +
+                key +
+                '」的目录（若存在），并尝试移除 openclaw.json 中对应 skills.entries 项。内置包技能不可删。是否继续？'
+            )
+          )
+            return;
+          applyInlineButtonLoading(btn, true);
+          mgmtPostJson('/api/mgmt/skills/remove-disk', { skillKey: key, baseDir: bd || '' })
+            .then(function (d) {
+              if (!d || !d.ok) {
+                applyInlineButtonLoading(btn, false, { error: true });
+              } else {
+                _mgmtSkillPreserveOpenFolds = skillFoldsSnap;
+                loadMgmtSkills(true);
+              }
+            })
+            .catch(function () {
+              applyInlineButtonLoading(btn, false, { error: true });
+            });
+        }
+      });
+    }
+    function bindMgmtAgentCardActions() {
+      var root = document.getElementById('mgmtAgentsTableWrap');
+      if (!root || root._agentActBound) return;
+      root._agentActBound = true;
+      root.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.closest) return;
+        var btn = t.closest('[data-mgmt-agent-act]');
+        if (!btn || btn.disabled) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        var act = btn.getAttribute('data-mgmt-agent-act');
+        var id = btn.getAttribute('data-agent-id');
+        if (!id || act !== 'remove') return;
+        var foldsSnap = mgmtCollectOpenFoldKeys('mgmtAgentsTableWrap');
+        if (
+          !confirm(
+            '将从配置中移除智能体「' +
+              id +
+              '」，并默认把工作区与 agent 数据目录移入回收站（网关 agents.delete）。主智能体 main 不可删。是否继续？'
+          )
+        )
+          return;
+        applyInlineButtonLoading(btn, true);
+        mgmtPostJson('/api/mgmt/agents/delete', { agentId: id, deleteFiles: true })
+          .then(function (d) {
+            if (!d || !d.ok) applyInlineButtonLoading(btn, false, { error: true });
+            else {
+              _mgmtAgentPreserveOpenFolds = foldsSnap;
+              loadMgmtAgents(true);
+            }
+          })
+          .catch(function () {
+            applyInlineButtonLoading(btn, false, { error: true });
+          });
+      });
+    }
+    function mgmtCronRunStatusPill(st) {
+      var s = st != null ? String(st) : '';
+      if (s === 'ok') return '<span class="mgmt-pill ok">上次 · OK</span>';
+      if (s === 'error') return '<span class="mgmt-pill err">上次 · 失败</span>';
+      if (s === 'skipped') return '<span class="mgmt-pill neu">上次 · 跳过</span>';
+      return '<span class="mgmt-pill neu">' + escHtml(s || '—') + '</span>';
+    }
+    function mgmtTaskSortByName(a, b) {
+      var na = String((a && a.name) || '').toLowerCase();
+      var nb = String((b && b.name) || '').toLowerCase();
+      try {
+        return na.localeCompare(nb, 'zh-Hans-CN');
+      } catch (e) {
+        return na < nb ? -1 : na > nb ? 1 : 0;
+      }
+    }
+    function mgmtCronPayloadKindZh(k) {
+      if (k == null || k === '') return '';
+      var s = String(k);
+      var map = {
+        message: '文字消息',
+        userMessage: '用户文字',
+        agentMessage: '智能体消息',
+        text: '文本',
+      };
+      return map[s] || s;
+    }
+    function renderMgmtJobCardHtml(j, canMutate) {
+      var jid = j.id != null ? String(j.id) : '';
+      var hasId = !!jid;
+      var dis = !canMutate || !hasId;
+      var en = j.enabled !== false;
+      var sk = j.sessionKey != null ? String(j.sessionKey) : '';
+      var bodyRaw =
+        j.taskDescription != null && String(j.taskDescription).trim()
+          ? String(j.taskDescription)
+          : j.payloadPreview != null && String(j.payloadPreview).trim()
+            ? String(j.payloadPreview)
+            : '';
+      var tip = dis ? '需网关 cron.list 可用且任务含 id' : '';
+      var kindZh = mgmtCronPayloadKindZh(j.payloadKind);
+      var detailStruct =
+        (hasId
+          ? '<div class="mgmt-job-dl"><span class="dt" title="网关里这条任务的编号，联系排错时可能用到">内部任务编号</span><span class="dd"><code>' +
+            escHtml(jid) +
+            '</code></span></div>'
+          : '') +
+        '<div class="mgmt-job-dl"><span class="dt" title="消息会发到哪个入口，例如某聊天渠道">要发到哪儿</span><span class="dd">' +
+        escHtml(j.sessionTarget != null ? String(j.sessionTarget) : '—') +
+        '</span></div>' +
+        '<div class="mgmt-job-dl"><span class="dt" title="到点后怎么把会话叫醒">叫醒方式</span><span class="dd">' +
+        escHtml(j.wakeMode != null ? String(j.wakeMode) : '—') +
+        '</span></div>' +
+        '<div class="mgmt-job-dl"><span class="dt" title="系统在硬盘上区分这条对话用的长串编号，平时不用抄">对话保存编号</span><span class="dd"><code title="' +
+        escAttr(sk) +
+        '">' +
+        escHtml(sk || '—') +
+        '</code></span></div>' +
+        (kindZh || j.payloadKind
+          ? '<div class="mgmt-job-dl"><span class="dt" title="网关里 payload.kind 的用途">内容类型（技术）</span><span class="dd">' +
+            escHtml(kindZh || String(j.payloadKind)) +
+            '</span></div>'
+          : '');
+      var lastRun = mgmtFmtTimeHtml(j.lastRunAtMs);
+      var nextRun = mgmtFmtTimeHtml(j.nextRunAtMs);
+      var bodyDetails = bodyRaw.trim()
+        ? '<details class="mgmt-job-details mgmt-job-details--taskbody">' +
+          '<summary>定时发送的完整文字（点击展开）</summary>' +
+          '<pre class="mgmt-job-task-body__text">' +
+          escHtml(bodyRaw) +
+          '</pre></details>'
+        : '<details class="mgmt-job-details mgmt-job-details--taskbody">' +
+          '<summary>定时发送的完整文字（当前无正文）</summary>' +
+          '<p class="mgmt-job-task-body__hint">这里还没读到要发送的正文。常见在 payload 的 <code>text</code> 或 <code>message</code>；只唤醒、没有文案时会空。</p></details>';
+      return (
+        '<div class="mgmt-job-card"' +
+        (hasId ? ' data-cron-job-id="' + escAttr(jid) + '"' : '') +
+        '>' +
+        '<div class="mgmt-job-card__top">' +
+        '<div class="mgmt-job-card__lead">' +
+        '<div class="mgmt-job-card__title">' +
+        escHtml(j.name != null ? String(j.name) : '（未命名）') +
+        '</div>' +
+        '<div class="mgmt-job-compact-meta">' +
+        '<div class="mgmt-job-meta-line">' +
+        '<span class="k">调度</span>' +
+        '<span class="mgmt-job-meta-line__val">' +
+        escHtml(j.scheduleLabel || '—') +
+        '</span></div>' +
+        '<div class="mgmt-job-meta-line mgmt-job-meta-chip">' +
+        '<span class="k">智能体</span> <code>' +
+        escHtml(j.agentId != null ? String(j.agentId) : '—') +
+        '</code></div>' +
+        '<div class="mgmt-job-meta-runs">' +
+        '<div class="mgmt-job-run-line"><span class="k">上次</span> ' +
+        lastRun +
+        '</div>' +
+        '<div class="mgmt-job-run-line"><span class="k">下次</span> ' +
+        nextRun +
+        '</div></div></div>' +
+        '<div class="mgmt-job-card__pills">' +
+        (en ? '<span class="mgmt-pill on">已启用</span>' : '<span class="mgmt-pill off">已停用</span>') +
+        mgmtCronRunStatusPill(j.lastRunStatus) +
+        '</div></div></div>' +
+        '<div class="mgmt-job-actions">' +
+        '<div class="mgmt-job-actions__primary">' +
+        '<button type="button" class="mgmt-act-btn sm primary" data-mgmt-cron-act="run" ' +
+        (dis ? 'disabled title="' + escAttr(tip) + '"' : '') +
+        '>立即执行</button>' +
+        '</div>' +
+        '<div class="mgmt-job-actions__tail">' +
+        '<button type="button" class="mgmt-act-btn sm' +
+        (en ? ' danger' : '') +
+        '" data-mgmt-cron-act="' +
+        (en ? 'disable' : 'enable') +
+        '" ' +
+        (dis ? 'disabled title="' + escAttr(tip) + '"' : '') +
+        '>' +
+        (en ? '停用' : '启用') +
+        '</button>' +
+        '<button type="button" class="mgmt-act-btn sm danger" data-mgmt-cron-act="remove" ' +
+        (dis ? 'disabled title="' + escAttr(tip) + '"' : !hasId ? 'disabled title="无 ID"' : '') +
+        '>移除</button>' +
+        '</div></div>' +
+        bodyDetails +
+        '<details class="mgmt-job-details">' +
+        '<summary>更多技术信息（一般不用管）</summary>' +
+        '<div class="mgmt-job-details-struct">' +
+        detailStruct +
+        '</div></details>' +
+        '</div>'
+      );
+    }
+    function renderMgmtTaskFold(title, jobList, canMutate, open, foldKey) {
+      if (!jobList || !jobList.length) return '';
+      var cards = jobList
+        .map(function (j) {
+          return renderMgmtJobCardHtml(j, canMutate);
+        })
+        .join('');
+      var fk =
+        foldKey != null && String(foldKey).trim()
+          ? ' data-mgmt-fold-key="' + escAttr(String(foldKey).trim()) + '"'
+          : '';
+      return (
+        '<details class="mgmt-fold"' +
+        fk +
+        (open ? ' open' : '') +
+        '><summary>' +
+        escHtml(title) +
+        '<span class="mgmt-fold__count">' +
+        jobList.length +
+        '</span></summary><div class="mgmt-jobs-stack">' +
+        cards +
+        '</div></details>'
+      );
+    }
+    function renderMgmtTasks(d) {
+      const wrap = document.getElementById('mgmtTasksTableWrap');
+      const meta = document.getElementById('mgmtTasksMeta');
+      if (!wrap) return;
+      setMgmtErr('mgmtTasksErr', '');
+      if (!d || d.ok !== true) {
+        wrap.innerHTML = '<div class="mgmt-empty">加载失败</div>';
+        if (meta) meta.textContent = '';
+        setMgmtErr('mgmtTasksErr', d && d.error ? String(d.error) : '未知错误');
+        mgmtOnMgmtPayloadRendered('tasks', d);
+        return;
+      }
+      var canMutate = d.cronActionsAvailable === true;
+      if (meta) {
+        var src = d.jobsSource === 'gateway' ? '数据源 · 网关 cron.list' : '数据源 · 本地 jobs.json';
+        var en = d.cronEnabled !== false ? '配置 · cron 开' : '配置 · cron 关';
+        var parts = [src, en];
+        if (canMutate) parts.push('操作 · 已接通网关');
+        else parts.push('操作 · 仅展示（需网关列表可用）');
+        if (d.gateway && d.gateway.statusOk && d.gateway.nextWakeAtMs != null) {
+          parts.push('下次唤醒 · ' + mgmtFmtTime(d.gateway.nextWakeAtMs));
+        }
+        if (d.jobsSource === 'gateway' && d.fileJobsCount != null) {
+          parts.push('磁盘对照 · ' + d.fileJobsCount + ' 条');
+        }
+        parts.push('任务数 ' + (d.jobs && d.jobs.length));
+        meta.textContent = parts.join(' · ');
+        mgmtAppendCacheHint(meta, d);
+      }
+      if (d.gateway && d.jobsSource === 'file' && d.gateway.listError) {
+        setMgmtErr('mgmtTasksErr', '网关 cron.list 不可用，已回退磁盘：' + String(d.gateway.listError));
+      } else if (d.loadError) {
+        setMgmtErr('mgmtTasksErr', String(d.loadError));
+      }
+      const jobs = Array.isArray(d.jobs) ? d.jobs : [];
+      if (jobs.length === 0) {
+        wrap.innerHTML = '<div class="mgmt-empty">暂无计划任务。可在官方控制台或 CLI 创建后在此查看与触发。</div>';
+        mgmtOnMgmtPayloadRendered('tasks', d);
+        return;
+      }
+      var enabled = [];
+      var disabled = [];
+      jobs.forEach(function (j) {
+        (j.enabled !== false ? enabled : disabled).push(j);
+      });
+      enabled.sort(mgmtTaskSortByName);
+      disabled.sort(mgmtTaskSortByName);
+      var openFolds = mgmtCollectOpenFoldKeys('mgmtTasksTableWrap');
+      var html = '';
+      html += renderMgmtTaskFold('已启用', enabled, canMutate, false, 'cron-on');
+      html += renderMgmtTaskFold('已停用', disabled, canMutate, false, 'cron-off');
+      wrap.innerHTML = html || '<div class="mgmt-empty">（无任务数据）</div>';
+      mgmtApplyOpenFoldKeys('mgmtTasksTableWrap', openFolds);
+      if (_mgmtCronPostActionFoldHint === 'cron-on') {
+        mgmtApplyOpenFoldKeys('mgmtTasksTableWrap', { 'cron-on': true });
+        _mgmtCronPostActionFoldHint = null;
+      } else if (_mgmtCronPostActionFoldHint === 'cron-off') {
+        mgmtApplyOpenFoldKeys('mgmtTasksTableWrap', { 'cron-off': true });
+        _mgmtCronPostActionFoldHint = null;
+      }
+      mgmtOnMgmtPayloadRendered('tasks', d);
+    }
+    function mgmtSkillRowKey(s) {
+      if (s.skillKey != null && String(s.skillKey).trim()) return String(s.skillKey).trim();
+      if (s.name != null && String(s.name).trim()) return String(s.name).trim();
+      return '';
+    }
+    function mgmtSkillRowDesc(s) {
+      var t = s.description != null ? String(s.description).trim() : '';
+      return t || '（无功能说明）';
+    }
+    /** 与 server._skill_origin_tier 对齐；优先用后端 originTier */
+    function mgmtSkillOriginTier(s) {
+      if (!s || typeof s !== 'object') return 'custom';
+      if (s.originTier === 'builtin' || s.originTier === 'custom') return s.originTier;
+      if (s.bundled === true) return 'builtin';
+      var src = (s.source != null ? String(s.source) : '').toLowerCase();
+      if (src.indexOf('openclaw-bundled') >= 0) return 'builtin';
+      var bd = s.baseDir != null ? String(s.baseDir) : '';
+      var fp = s.filePath != null ? String(s.filePath) : '';
+      var low = (bd || fp).toLowerCase();
+      if (low.indexOf('/usr/lib/node_modules/openclaw') === 0) return 'builtin';
+      return 'custom';
+    }
+    function mgmtSkillOriginLabel(s) {
+      if (s && s.originLabelZh != null && String(s.originLabelZh).trim()) return String(s.originLabelZh).trim();
+      return mgmtSkillOriginTier(s) === 'builtin' ? '系统内置' : '自定义';
+    }
+    function mgmtSkillSortByName(a, b) {
+      var na = String((a && (a.name || a.skillKey)) || '').toLowerCase();
+      var nb = String((b && (b.name || b.skillKey)) || '').toLowerCase();
+      try {
+        return na.localeCompare(nb, 'zh-Hans-CN');
+      } catch (e) {
+        return na < nb ? -1 : na > nb ? 1 : 0;
+      }
+    }
+    function mgmtPartitionSkillByOrigin(list) {
+      var custom = [];
+      var builtin = [];
+      list.forEach(function (s) {
+        (mgmtSkillOriginTier(s) === 'builtin' ? builtin : custom).push(s);
+      });
+      custom.sort(mgmtSkillSortByName);
+      builtin.sort(mgmtSkillSortByName);
+      return { custom: custom, builtin: builtin };
+    }
+    function renderMgmtSkillFold(title, list, canCfg, open, foldKey) {
+      if (!list || !list.length) return '';
+      var cfgTip = canCfg ? '' : ' title="需网关在线且 skills.status 可用"';
+      var part = mgmtPartitionSkillByOrigin(list);
+      function rowHtml(s) {
+        var key = mgmtSkillRowKey(s);
+        var bd = s.baseDir != null ? String(s.baseDir) : '';
+        var tier = mgmtSkillOriginTier(s);
+        var dis = s.disabled === true;
+        var cfgOff = !canCfg || !key;
+        var isBuiltin = tier === 'builtin';
+        var rmOff = !key || isBuiltin;
+        var rmTitle = isBuiltin ? '系统内置技能不可删本地目录' : '';
+        var pill =
+          '<span class="mgmt-skill-pill ' +
+          (isBuiltin ? 'mgmt-skill-pill--builtin' : 'mgmt-skill-pill--custom') +
+          '">' +
+          escHtml(mgmtSkillOriginLabel(s)) +
+          '</span>';
+        var srcLine = '';
+        if (s.source != null && String(s.source).trim()) {
+          srcLine = '<span class="mgmt-skill-src">来源 · ' + escHtml(String(s.source)) + '</span>';
+        }
+        return (
+          '<div class="mgmt-skill-row" data-skill-key="' +
+          escAttr(key) +
+          '" data-base-dir="' +
+          escAttr(bd) +
+          '" data-origin-tier="' +
+          escAttr(tier) +
+          '">' +
+          '<div class="mgmt-skill-row__main">' +
+          '<div class="mgmt-skill-row__namebar">' +
+          '<span class="mgmt-skill-row__name">' +
+          escHtml(s.name != null ? String(s.name) : key || '—') +
+          '</span>' +
+          pill +
+          '</div>' +
+          srcLine +
+          '<p class="mgmt-skill-row__desc">' +
+          escHtml(mgmtSkillRowDesc(s)) +
+          '</p>' +
+          '</div>' +
+          '<div class="mgmt-skill-row__acts">' +
+          (dis
+            ? '<button type="button" class="mgmt-act-btn sm" data-mgmt-skill-act="enable" ' +
+              (cfgOff ? 'disabled' + cfgTip : '') +
+              '>启用</button>'
+            : '<button type="button" class="mgmt-act-btn sm" data-mgmt-skill-act="disable" ' +
+              (cfgOff ? 'disabled' + cfgTip : '') +
+              '>停用</button>') +
+          '<button type="button" class="mgmt-act-btn sm danger" data-mgmt-skill-act="remove" ' +
+          (rmOff ? 'disabled title="' + escAttr(rmTitle || '缺少 skillKey') + '"' : '') +
+          '>移除</button>' +
+          '</div></div>'
+        );
+      }
+      var blocks = '';
+      if (part.custom.length) {
+        blocks += '<div class="mgmt-skill-subhead">自定义 · 工作区 · 扩展（优先）</div>';
+        blocks += part.custom.map(rowHtml).join('');
+      }
+      if (part.builtin.length) {
+        blocks += '<div class="mgmt-skill-subhead">系统内置（OpenClaw 自带）</div>';
+        blocks += part.builtin.map(rowHtml).join('');
+      }
+      if (!blocks) return '';
+      var fk =
+        foldKey != null && String(foldKey).trim()
+          ? ' data-mgmt-fold-key="' + escAttr(String(foldKey).trim()) + '"'
+          : '';
+      return (
+        '<details class="mgmt-fold"' +
+        fk +
+        (open ? ' open' : '') +
+        '><summary>' +
+        escHtml(title) +
+        '<span class="mgmt-fold__count">' +
+        list.length +
+        '</span></summary><div class="mgmt-skill-rows">' +
+        blocks +
+        '</div></details>'
+      );
+    }
+    function renderMgmtSkills(d) {
+      const wrap = document.getElementById('mgmtSkillsTableWrap');
+      const meta = document.getElementById('mgmtSkillsMeta');
+      if (!wrap) return;
+      setMgmtErr('mgmtSkillsErr', '');
+      if (!d || d.ok !== true) {
+        _mgmtSkillPreserveOpenFolds = null;
+        _mgmtSkillPostActionFoldHint = null;
+        wrap.innerHTML = '<div class="mgmt-empty">加载失败</div>';
+        if (meta) meta.textContent = '';
+        setMgmtErr('mgmtSkillsErr', d && d.error ? String(d.error) : '未知错误');
+        mgmtOnMgmtPayloadRendered('skills', d);
+        return;
+      }
+      var gr = d.gatewayRuntime;
+      var gwSkills = gr && Array.isArray(gr.skills) ? gr.skills : [];
+      var canCfg = d.skillsActionsAvailable === true;
+      if (meta) {
+        var wch = d.skillsWatch === true ? 'watch 开' : d.skillsWatch === false ? 'watch 关' : 'watch 默认';
+        var parts = ['工作区 ' + (d.workspaceRoot || '—'), wch];
+        if (gr && gr.ok) {
+          parts.push('Skill ' + gwSkills.length + ' 个');
+          if (gr.originCountCustom != null && gr.originCountBuiltin != null) {
+            parts.push('自定义 ' + gr.originCountCustom + ' · 内置 ' + gr.originCountBuiltin);
+          } else {
+            var _nc = 0;
+            var _nb = 0;
+            gwSkills.forEach(function (x) {
+              if (mgmtSkillOriginTier(x) === 'builtin') _nb++;
+              else _nc++;
+            });
+            parts.push('自定义 ' + _nc + ' · 内置 ' + _nb);
+          }
+          parts.push(canCfg ? '可写配置' : '只读（网关未通）');
+        } else {
+          parts.push('网关未列出 Skill');
+        }
+        meta.textContent = parts.join(' · ');
+        mgmtAppendCacheHint(meta, d);
+      }
+      if (gr && gr.error && !gr.ok) {
+        setMgmtErr('mgmtSkillsErr', 'skills.status：' + String(gr.error));
+      }
+      if (!gwSkills.length) {
+        _mgmtSkillPreserveOpenFolds = null;
+        _mgmtSkillPostActionFoldHint = null;
+        wrap.innerHTML =
+          '<div class="mgmt-empty">暂无 Skill 列表。请确认网关在线且 <code>skills.status</code> 正常。</div>';
+        mgmtOnMgmtPayloadRendered('skills', d);
+        return;
+      }
+      var usable = [];
+      var bad = [];
+      var off = [];
+      gwSkills.forEach(function (s) {
+        if (s.disabled === true) off.push(s);
+        else if (s.eligible === true) usable.push(s);
+        else bad.push(s);
+      });
+      var openFolds = mgmtCollectOpenFoldKeys('mgmtSkillsTableWrap');
+      var html = '';
+      html += renderMgmtSkillFold('可用', usable, canCfg, false, 'skill-ok');
+      html += renderMgmtSkillFold('不可用（依赖或环境未满足）', bad, canCfg, false, 'skill-bad');
+      html += renderMgmtSkillFold('已停用', off, canCfg, false, 'skill-off');
+      wrap.innerHTML = html || '<div class="mgmt-empty">列表为空</div>';
+      if (!html) {
+        _mgmtSkillPreserveOpenFolds = null;
+        _mgmtSkillPostActionFoldHint = null;
+        mgmtOnMgmtPayloadRendered('skills', d);
+        return;
+      }
+      mgmtApplyOpenFoldKeys('mgmtSkillsTableWrap', openFolds);
+      if (_mgmtSkillPreserveOpenFolds && typeof _mgmtSkillPreserveOpenFolds === 'object') {
+        mgmtApplyOpenFoldKeys('mgmtSkillsTableWrap', _mgmtSkillPreserveOpenFolds);
+        _mgmtSkillPreserveOpenFolds = null;
+      }
+      if (_mgmtSkillPostActionFoldHint === 'skill-active') {
+        mgmtApplyOpenFoldKeys('mgmtSkillsTableWrap', { 'skill-ok': true, 'skill-bad': true });
+        _mgmtSkillPostActionFoldHint = null;
+      } else if (_mgmtSkillPostActionFoldHint === 'skill-off') {
+        mgmtApplyOpenFoldKeys('mgmtSkillsTableWrap', { 'skill-off': true });
+        _mgmtSkillPostActionFoldHint = null;
+      }
+      mgmtOnMgmtPayloadRendered('skills', d);
+    }
+    function mgmtAgentSortById(a, b) {
+      var ia = String((a && a.id) || '').toLowerCase();
+      var ib = String((b && b.id) || '').toLowerCase();
+      try {
+        return ia.localeCompare(ib, 'zh-Hans-CN');
+      } catch (e) {
+        return ia < ib ? -1 : ia > ib ? 1 : 0;
+      }
+    }
+    function renderMgmtAgentCardHtml(a, canAct) {
+      var sc = a.sessionCount;
+      var scTxt = sc === -1 ? '读取出错' : String(sc);
+      var gwl =
+        a.listedInGateway === true ? '网关注册' : a.listedInGateway === false ? '仅本机磁盘' : '未对照网关';
+      var pillGw =
+        a.listedInGateway === true
+          ? '<span class="mgmt-pill on">' + escHtml(gwl) + '</span>'
+          : a.listedInGateway === false
+            ? '<span class="mgmt-pill neu">' + escHtml(gwl) + '</span>'
+            : '<span class="mgmt-pill neu">' + escHtml(gwl) + '</span>';
+      var pillDef = a.isConfigDefaultAgent ? '<span class="mgmt-pill ok">配置主体</span>' : '';
+      var aid = a.id != null ? String(a.id) : '';
+      var acts = '';
+      if (canAct === true && aid && aid !== 'main') {
+        acts =
+          '<div class="mgmt-agent-card__acts">' +
+          '<button type="button" class="mgmt-act-btn sm danger" data-mgmt-agent-act="remove" data-agent-id="' +
+          escAttr(aid) +
+          '">删除</button></div>';
+      }
+      return (
+        '<div class="mgmt-agent-card" data-agent-id="' +
+        escAttr(aid) +
+        '">' +
+        '<div class="mgmt-agent-card__name" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">' +
+        '<code style="font-size:13px;font-weight:800;">' +
+        escHtml(aid || '—') +
+        '</code>' +
+        pillGw +
+        pillDef +
+        '</div>' +
+        '<div class="mgmt-mini-row"><span class="k">会话条目数</span><span class="v">' +
+        escHtml(scTxt) +
+        '</span></div>' +
+        '<div class="mgmt-mini-row"><span class="k">模型目录</span><span class="v">' +
+        (a.hasModelsCatalog ? '已存在 models.json' : '无 models.json') +
+        '</span></div>' +
+        '<div class="mgmt-mini-row"><span class="k">数据路径</span><span class="v"><code>' +
+        escHtml(a.path != null ? String(a.path) : '—') +
+        '</code></span></div>' +
+        acts +
+        '</div>'
+      );
+    }
+    function renderMgmtAgentFold(title, list, open, foldKey, canAct) {
+      if (!list || !list.length) return '';
+      var inner = list
+        .map(function (x) {
+          return renderMgmtAgentCardHtml(x, canAct);
+        })
+        .join('');
+      var fk =
+        foldKey != null && String(foldKey).trim()
+          ? ' data-mgmt-fold-key="' + escAttr(String(foldKey).trim()) + '"'
+          : '';
+      return (
+        '<details class="mgmt-fold"' +
+        fk +
+        (open ? ' open' : '') +
+        '><summary>' +
+        escHtml(title) +
+        '<span class="mgmt-fold__count">' +
+        list.length +
+        '</span></summary><div class="mgmt-card-grid">' +
+        inner +
+        '</div></details>'
+      );
+    }
+    function renderMgmtAgents(d) {
+      const wrap = document.getElementById('mgmtAgentsTableWrap');
+      const sum = document.getElementById('mgmtAgentsSummary');
+      const meta = document.getElementById('mgmtAgentsMeta');
+      if (!wrap) return;
+      setMgmtErr('mgmtAgentsErr', '');
+      if (!d || d.ok !== true) {
+        _mgmtAgentPreserveOpenFolds = null;
+        wrap.innerHTML = '<div class="mgmt-empty">加载失败</div>';
+        if (sum) sum.innerHTML = '';
+        if (meta) meta.textContent = '';
+        setMgmtErr('mgmtAgentsErr', d && d.error ? String(d.error) : '未知错误');
+        mgmtOnMgmtPayloadRendered('agents', d);
+        return;
+      }
+      /** 删除依赖网关；新建也走网关但始终可点，避免 list 失败时按钮死灰无反馈 */
+      var canMutateAgents = d.agentsActionsAvailable === true;
+      window._mgmtAgentsCreateDefaultWs =
+        d.config && d.config.defaultWorkspace != null ? String(d.config.defaultWorkspace) : '';
+      if (meta) {
+        var mt =
+          '数据根 ' +
+          (d.agentsRoot || '—') +
+          ' · 条目 ' +
+          (d.agents && d.agents.length);
+        if (d.gatewayAgents && d.gatewayAgents.ok) {
+          mt +=
+            ' · 默认 ' +
+            (d.gatewayAgents.defaultId != null ? String(d.gatewayAgents.defaultId) : '—') +
+            ' · scope ' +
+            (d.gatewayAgents.scope != null ? String(d.gatewayAgents.scope) : '—');
+        } else if (d.gatewayAgents && d.gatewayAgents.error) {
+          mt += ' · 网关未接通';
+        }
+        mt += canMutateAgents
+          ? ' · 删除智能体 · 已接通网关'
+          : ' · 删除智能体 · 需 agents.list 成功（新建仍可试，失败见接口错误）';
+        meta.textContent = mt;
+        mgmtAppendCacheHint(meta, d);
+      }
+      if (d.gatewayAgents && d.gatewayAgents.error && !d.gatewayAgents.ok) {
+        setMgmtErr('mgmtAgentsErr', 'agents.list：' + String(d.gatewayAgents.error));
+      }
+      const cfg = d.config && typeof d.config === 'object' ? d.config : {};
+      if (sum) {
+        var fb = Array.isArray(cfg.fallbacks) ? cfg.fallbacks.join('，') : '';
+        sum.innerHTML =
+          '<div class="mgmt-config-strip">' +
+          '<div><strong>默认工作区</strong>' +
+          escHtml(cfg.defaultWorkspace != null ? String(cfg.defaultWorkspace) : '—') +
+          '</div>' +
+          '<div><strong>主模型</strong><code>' +
+          escHtml(cfg.primaryModel != null ? String(cfg.primaryModel) : '—') +
+          '</code></div>' +
+          '<div><strong>备用顺位</strong>' +
+          escHtml(fb || '—') +
+          '</div>' +
+          '<div><strong>提权默认</strong>' +
+          escHtml(cfg.elevatedDefault != null ? String(cfg.elevatedDefault) : '—') +
+          '</div></div>';
+      }
+      const ag = Array.isArray(d.agents) ? d.agents : [];
+      if (ag.length === 0) {
+        wrap.innerHTML = '<div class="mgmt-empty">未发现任何智能体目录或网关条目。</div>';
+        mgmtOnMgmtPayloadRendered('agents', d);
+        return;
+      }
+      var gw = [];
+      var disk = [];
+      var na = [];
+      ag.forEach(function (a) {
+        if (a.listedInGateway === true) gw.push(a);
+        else if (a.listedInGateway === false) disk.push(a);
+        else na.push(a);
+      });
+      gw.sort(mgmtAgentSortById);
+      disk.sort(mgmtAgentSortById);
+      na.sort(mgmtAgentSortById);
+      var openFolds = mgmtCollectOpenFoldKeys('mgmtAgentsTableWrap');
+      var html = '';
+      html += renderMgmtAgentFold('网关注册', gw, false, 'agent-gw', canMutateAgents);
+      html += renderMgmtAgentFold('仅本机磁盘', disk, false, 'agent-disk', canMutateAgents);
+      html += renderMgmtAgentFold('网关未对照（列表不可用或尚未同步）', na, false, 'agent-na', canMutateAgents);
+      wrap.innerHTML = html || '<div class="mgmt-empty">列表为空</div>';
+      mgmtApplyOpenFoldKeys('mgmtAgentsTableWrap', openFolds);
+      if (_mgmtAgentPreserveOpenFolds && typeof _mgmtAgentPreserveOpenFolds === 'object') {
+        mgmtApplyOpenFoldKeys('mgmtAgentsTableWrap', _mgmtAgentPreserveOpenFolds);
+        _mgmtAgentPreserveOpenFolds = null;
+      }
+      mgmtOnMgmtPayloadRendered('agents', d);
+    }
+    var _mgmtPrefetchPromises = { tasks: null, skills: null, agents: null };
+    /** 启用/停用后任务换组：在保留用户折叠状态的同时额外展开目标分组 */
+    var _mgmtCronPostActionFoldHint = null; // 'cron-on' | 'cron-off' | null
+    var _mgmtSkillPostActionFoldHint = null; // 'skill-active'（可用+不可用）| 'skill-off' | null
+    /** 操作前快照的分组展开状态（避开 confirm / 重绘时 <details> 被收起导致读错） */
+    var _mgmtSkillPreserveOpenFolds = null;
+    var _mgmtAgentPreserveOpenFolds = null;
+
+    /** 任务 / Skill / 智能体：同一套刷新动效与请求流程（对齐 Skill 行内按钮的可见度） */
+    var _mgmtPanelLoaderCfg = {
+      tasks: {
+        wrapId: 'mgmtTasksTableWrap',
+        btnId: 'mgmtTasksRefreshBtn',
+        path: '/api/mgmt/tasks',
+        render: function (d) {
+          renderMgmtTasks(d);
+        },
+        prefetchKey: 'tasks',
+      },
+      skills: {
+        wrapId: 'mgmtSkillsTableWrap',
+        btnId: 'mgmtSkillsRefreshBtn',
+        path: '/api/mgmt/skills',
+        render: function (d) {
+          renderMgmtSkills(d);
+        },
+        prefetchKey: 'skills',
+      },
+      agents: {
+        wrapId: 'mgmtAgentsTableWrap',
+        btnId: 'mgmtAgentsRefreshBtn',
+        path: '/api/mgmt/agents',
+        render: function (d) {
+          renderMgmtAgents(d);
+        },
+        prefetchKey: 'agents',
+      },
+    };
+    function loadMgmtPanel(kind, forceRefresh) {
+      forceRefresh = !!forceRefresh;
+      var cfg = _mgmtPanelLoaderCfg[kind];
+      if (!cfg) return Promise.resolve();
+      var wrap = document.getElementById(cfg.wrapId);
+      var btn = document.getElementById(cfg.btnId);
+      var pk = cfg.prefetchKey;
+      if (!forceRefresh && _mgmtPrefetchPromises[pk]) return _mgmtPrefetchPromises[pk];
+
+      var exec = async function () {
+        if (forceRefresh && wrap) wrap.classList.add('mgmt-panel--refreshing');
+        if (forceRefresh && btn) applyInlineButtonLoading(btn, true);
+        try {
+          var d = await mgmtFetchJson(cfg.path, { forceRefresh: forceRefresh });
+          cfg.render(d);
+          if (forceRefresh && btn) {
+            applyInlineButtonLoading(btn, false, d && d.ok === true ? { success: true } : { error: true });
+          }
+        } catch (e) {
+          cfg.render({ ok: false, error: e && e.message ? e.message : String(e) });
+          if (forceRefresh && btn) applyInlineButtonLoading(btn, false, { error: true });
+        } finally {
+          if (wrap) wrap.classList.remove('mgmt-panel--refreshing');
+          if (btn && !forceRefresh) btn.disabled = false;
+        }
+      };
+
+      var p = exec();
+      if (!forceRefresh) {
+        _mgmtPrefetchPromises[pk] = p;
+        p.finally(function () {
+          if (_mgmtPrefetchPromises[pk] === p) _mgmtPrefetchPromises[pk] = null;
+        });
+      }
+      return p;
+    }
+    function loadMgmtTasks(forceRefresh) {
+      return loadMgmtPanel('tasks', forceRefresh);
+    }
+    function loadMgmtSkills(forceRefresh) {
+      return loadMgmtPanel('skills', forceRefresh);
+    }
+    function loadMgmtAgents(forceRefresh) {
+      return loadMgmtPanel('agents', forceRefresh);
+    }
+    function prefetchMgmtPanelsInBackground() {
+      loadMgmtTasks(false).catch(function () {});
+      loadMgmtSkills(false).catch(function () {});
+      loadMgmtAgents(false).catch(function () {});
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'visible') return;
+        var id = getActiveTabContentId();
+        if (id === 'tab-tasks' || id === 'tab-skills' || id === 'tab-agents') {
+          refreshMgmtPanelIfNeeded(id);
+        } else {
+          mgmtRestartStaleTimersAfterVisible();
+        }
+      });
+    }
+    function getActiveTabContentId() {
+      const el = document.querySelector('.tab-content.active');
+      return el && el.id ? el.id : '';
+    }
+    function refreshMgmtPanelIfNeeded(tabId) {
+      if (tabId === 'tab-tasks') loadMgmtTasks();
+      else if (tabId === 'tab-skills') loadMgmtSkills();
+      else if (tabId === 'tab-agents') loadMgmtAgents();
     }
     function thinkingTierOf(m) {
       if (!m) return 'off';
       const t = m.thinking;
       if (t != null && String(t).trim() !== '') return String(t).trim();
       return 'off';
+    }
+    /** 模型库标题：上下文窗口 / 最大输出，如 200k/32k、1000k/128k（不足 1k 显示原整数） */
+    function formatTokensKShort(n) {
+      if (n == null || n === '') return '—';
+      const v = Math.floor(Number(n));
+      if (!Number.isFinite(v) || v < 0) return '—';
+      if (v < 1000) return String(v);
+      return Math.floor(v / 1000) + 'k';
     }
     function escHtml(s) {
       return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -2029,8 +4125,12 @@
     async function applyFullDeploy() {
       await apiReq('/api/selection', buildSelectionPayload());
       await pushAllSessionRowsFromUi();
-      await apiReq('/api/restart', {});
-      await refresh();
+      try {
+        await apiReq('/api/restart', {});
+      } catch (restartErr) {
+        // 网关重启导致连接中断是预期行为，忽略
+      }
+      // 不再在这里 refresh，交给调用方自行决定刷新时机
     }
     /** 把该行模型下拉设为顶栏「主模型」当前值；仅改界面，不写 sessions、不重启。生效须点顶栏「应用」。 */
     function applySessionRowModelToPrimary(wrap) {
@@ -2082,6 +4182,413 @@
       if (!r.ok || d.ok === false) throw new Error(d.error || '失败');
       return d;
     }
+
+    function setLocalToolStatus(id, msg, isError) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = msg || '';
+      el.classList.toggle('is-error', !!isError);
+    }
+
+    function getLocalCodexProviders() {
+      const codex = state && state.localTools && state.localTools.codex;
+      return codex && Array.isArray(codex.providers)
+        ? codex.providers.filter((p) => p && p.key)
+        : [];
+    }
+
+    function getOpenClawProviderByName(name) {
+      return state && Array.isArray(state.providers)
+        ? state.providers.find((p) => p && p.name === name) || null
+        : null;
+    }
+
+    function getOpenClawModelByRef(ref) {
+      return state && Array.isArray(state.models)
+        ? state.models.find((m) => m && m.ref === ref) || null
+        : null;
+    }
+
+    function getOpenClawEffectiveApi(model, provider) {
+      if (model && model.api && String(model.api).trim()) return String(model.api).trim();
+      if (provider && provider.api && String(provider.api).trim() && String(provider.api).trim() !== 'per-model') {
+        return String(provider.api).trim();
+      }
+      return '';
+    }
+
+    function isOpenClawModelBorrowableForClaude(model, provider) {
+      return !!(model && model.id && provider && provider.baseUrl && String(provider.baseUrl).trim() && !String(provider.baseUrl).startsWith('('));
+    }
+
+    function isOpenClawModelBorrowableForCodex(model, provider) {
+      const api = getOpenClawEffectiveApi(model, provider);
+      return api === 'openai-completions' || api.indexOf('responses') >= 0;
+    }
+
+    function inferCodexWireApiFromOpenClaw(model, provider) {
+      const codex = state && state.localTools && state.localTools.codex ? state.localTools.codex : {};
+      const currentProviders = getLocalCodexProviders();
+      const providerName = provider && provider.name ? String(provider.name) : '';
+      const baseUrl = provider && provider.baseUrl ? String(provider.baseUrl) : '';
+      const existing = currentProviders.find((p) => {
+        const key = p && p.key ? String(p.key).trim().toLowerCase() : '';
+        const url = p && p.baseUrl ? String(p.baseUrl).trim().toLowerCase() : '';
+        return (providerName && key === providerName.toLowerCase()) || (baseUrl && url === baseUrl.toLowerCase());
+      }) || (
+        codex.provider && providerName && String(codex.provider).trim().toLowerCase() === providerName.toLowerCase()
+          ? { wireApi: codex.wireApi || '' }
+          : null
+      );
+      if (existing && existing.wireApi) return String(existing.wireApi);
+      const api = getOpenClawEffectiveApi(model, provider);
+      if (api.indexOf('responses') >= 0) return 'responses';
+      if (api === 'openai-completions') return 'responses';
+      return 'responses';
+    }
+
+    function convertOpenClawBaseUrlForClaude(baseUrl) {
+      const s = String(baseUrl || '').trim();
+      if (!s) return '';
+      if (s.endsWith('/v1/')) return s.slice(0, -4);
+      if (s.endsWith('/v1')) return s.slice(0, -3);
+      return s;
+    }
+
+    function buildOpenClawBorrowProviderRows(filterFn) {
+      const seen = new Set();
+      const rows = [];
+      if (!state || !Array.isArray(state.models)) return rows;
+      state.models.forEach((m) => {
+        const provider = getOpenClawProviderByName(m.provider);
+        if (!provider || !filterFn(m, provider)) return;
+        const key = provider.name || '';
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        rows.push({ key: key, label: key });
+      });
+      rows.sort((a, b) => a.key.localeCompare(b.key));
+      return rows;
+    }
+
+    function renderOpenClawBorrowProviderSelect(selectId, filterFn, placeholder, selectedProvider) {
+      const sel = document.getElementById(selectId);
+      if (!sel) return '';
+      const rows = buildOpenClawBorrowProviderRows(filterFn);
+      sel.innerHTML = ['<option value="">' + escHtml(placeholder) + '</option>']
+        .concat(rows.map((row) => '<option value="' + escAttr(row.key) + '">' + escHtml(row.label) + '</option>'))
+        .join('');
+      if (selectedProvider && rows.some((row) => row.key === selectedProvider)) sel.value = selectedProvider;
+      else sel.value = '';
+      return sel.value;
+    }
+
+    function renderOpenClawBorrowModelSelect(providerSelectId, modelSelectId, filterFn, selectedRef, placeholder) {
+      const providerSel = document.getElementById(providerSelectId);
+      const modelSel = document.getElementById(modelSelectId);
+      if (!providerSel || !modelSel) return '';
+      const providerName = String(providerSel.value || '');
+      if (!providerName) {
+        modelSel.innerHTML = '<option value="">' + escHtml(placeholder) + '</option>';
+        modelSel.value = '';
+        return '';
+      }
+      const provider = getOpenClawProviderByName(providerName);
+      const rows = (state && Array.isArray(state.models) ? state.models : [])
+        .filter((m) => m && m.provider === providerName && provider && filterFn(m, provider))
+        .map((m) => ({
+          ref: m.ref,
+          label: (m.name || m.id || m.ref)
+        }))
+        .sort((a, b) => a.ref.localeCompare(b.ref));
+      modelSel.innerHTML = rows.length
+        ? rows.map((row) => '<option value="' + escAttr(row.ref) + '">' + escHtml(row.label) + '</option>').join('')
+        : '<option value="">' + escHtml(placeholder) + '</option>';
+      if (selectedRef && rows.some((row) => row.ref === selectedRef)) modelSel.value = selectedRef;
+      else if (rows.length) modelSel.value = rows[0].ref;
+      else modelSel.value = '';
+      return String(modelSel.value || '');
+    }
+
+    function applyLocalClaudeBorrowSelection() {
+      const sel = document.getElementById('localClaudeBorrowModel');
+      localClaudeBorrowRef = sel ? String(sel.value || '') : '';
+      if (!localClaudeBorrowRef) {
+        if (!state || !state.localTools || !state.localTools.claude || !state.localTools.claude.error) {
+          setLocalToolStatus('localClaudeStatus', '保存到用户级 ~/.claude/settings.json；通常影响后续新开会话。', false);
+        }
+        return;
+      }
+      const model = getOpenClawModelByRef(localClaudeBorrowRef);
+      const provider = model ? getOpenClawProviderByName(model.provider) : null;
+      if (!model || !provider) return;
+      const modelInput = document.getElementById('localClaudeModel');
+      const baseUrlInput = document.getElementById('localClaudeBaseUrl');
+      const sonnetInput = document.getElementById('localClaudeSonnetModel');
+      const opusInput = document.getElementById('localClaudeOpusModel');
+      const modelId = model.id ? String(model.id).trim() : '';
+      if (modelInput) modelInput.value = modelId;
+      if (baseUrlInput) baseUrlInput.value = convertOpenClawBaseUrlForClaude(provider.baseUrl);
+      if (sonnetInput && !sonnetInput.value && modelId.indexOf('claude-sonnet-') === 0) sonnetInput.value = modelId;
+      if (opusInput && !opusInput.value && modelId.indexOf('claude-opus-') === 0) opusInput.value = modelId;
+      setLocalToolStatus('localClaudeStatus', '将借用 OpenClaw 的 ' + localClaudeBorrowRef + ' 并按 Claude Code 规则转换。', false);
+    }
+
+    function syncLocalClaudeBorrowModels() {
+      const providerSel = document.getElementById('localClaudeBorrowProvider');
+      const providerName = providerSel ? String(providerSel.value || '') : '';
+      const keepRef = localClaudeBorrowRef && localClaudeBorrowRef.indexOf(providerName + '/') === 0 ? localClaudeBorrowRef : '';
+      localClaudeBorrowRef = renderOpenClawBorrowModelSelect(
+        'localClaudeBorrowProvider',
+        'localClaudeBorrowModel',
+        isOpenClawModelBorrowableForClaude,
+        keepRef,
+        '（先选供应商）'
+      );
+      applyLocalClaudeBorrowSelection();
+    }
+
+    function applyLocalCodexBorrowSelection() {
+      const sel = document.getElementById('localCodexBorrowModel');
+      localCodexBorrowRef = sel ? String(sel.value || '') : '';
+      if (!localCodexBorrowRef) {
+        updateLocalCodexStatusLine();
+        return;
+      }
+      const model = getOpenClawModelByRef(localCodexBorrowRef);
+      const provider = model ? getOpenClawProviderByName(model.provider) : null;
+      if (!model || !provider) return;
+      const providerSel = document.getElementById('localCodexProvider');
+      const modelInput = document.getElementById('localCodexModel');
+      const providerNameInput = document.getElementById('localCodexProviderName');
+      const baseUrlInput = document.getElementById('localCodexBaseUrl');
+      const wireApiInput = document.getElementById('localCodexWireApi');
+      if (providerSel) {
+        const matched = Array.from(providerSel.options || []).some((opt) => opt.value === provider.name);
+        if (matched) providerSel.value = provider.name;
+      }
+      if (modelInput) modelInput.value = model.id || '';
+      if (providerNameInput) providerNameInput.value = provider.name || '';
+      if (baseUrlInput) baseUrlInput.value = provider.baseUrl && !String(provider.baseUrl).startsWith('(') ? String(provider.baseUrl) : '';
+      if (wireApiInput) wireApiInput.value = inferCodexWireApiFromOpenClaw(model, provider);
+      setLocalToolStatus('localCodexStatus', '将借用 OpenClaw 的 ' + localCodexBorrowRef + ' 并按 Codex 规则转换。', false);
+    }
+
+    function syncLocalCodexBorrowModels() {
+      const providerSel = document.getElementById('localCodexBorrowProvider');
+      const providerName = providerSel ? String(providerSel.value || '') : '';
+      const keepRef = localCodexBorrowRef && localCodexBorrowRef.indexOf(providerName + '/') === 0 ? localCodexBorrowRef : '';
+      localCodexBorrowRef = renderOpenClawBorrowModelSelect(
+        'localCodexBorrowProvider',
+        'localCodexBorrowModel',
+        isOpenClawModelBorrowableForCodex,
+        keepRef,
+        '（先选供应商）'
+      );
+      applyLocalCodexBorrowSelection();
+    }
+
+    function updateLocalCodexStatusLine() {
+      const codex = state && state.localTools && state.localTools.codex ? state.localTools.codex : {};
+      if (codex.error) {
+        setLocalToolStatus('localCodexStatus', 'Codex 配置读取失败：' + codex.error, true);
+        return;
+      }
+      if (!codex.exists) {
+        setLocalToolStatus('localCodexStatus', '未找到 ~/.codex/config.toml，当前卡片无法写入 Codex CLI 配置。', true);
+        return;
+      }
+      const providers = getLocalCodexProviders();
+      if (!providers.length) {
+        setLocalToolStatus('localCodexStatus', '未识别到 model_providers 段，请先检查 ~/.codex/config.toml。', true);
+        return;
+      }
+      const sel = document.getElementById('localCodexProvider');
+      const picked = sel ? providers.find((p) => p.key === sel.value) : null;
+      let msg = '保存到 ~/.codex/config.toml；通常影响后续新开会话。';
+      if (picked && picked.envKey) msg += ' 当前认证键 ' + picked.envKey + ' 不在此处改。';
+      setLocalToolStatus('localCodexStatus', msg, false);
+    }
+
+    function syncLocalCodexProviderFieldsFromSelection() {
+      const sel = document.getElementById('localCodexProvider');
+      const providerName = document.getElementById('localCodexProviderName');
+      const baseUrl = document.getElementById('localCodexBaseUrl');
+      const wireApi = document.getElementById('localCodexWireApi');
+      if (!sel || !providerName || !baseUrl || !wireApi) return;
+      const codex = state && state.localTools && state.localTools.codex ? state.localTools.codex : {};
+      const picked = getLocalCodexProviders().find((p) => p.key === sel.value) || (
+        codex.provider === sel.value
+          ? {
+              key: codex.provider || '',
+              name: codex.providerName || '',
+              baseUrl: codex.baseUrl || '',
+              wireApi: codex.wireApi || '',
+              envKey: '',
+            }
+          : null
+      );
+      if (picked) {
+        providerName.value = picked.name || '';
+        baseUrl.value = picked.baseUrl || '';
+        wireApi.value = picked.wireApi || '';
+      } else {
+        providerName.value = '';
+        baseUrl.value = '';
+        wireApi.value = '';
+      }
+      updateLocalCodexStatusLine();
+    }
+
+    function renderLocalToolSettings(localTools) {
+      const claude = localTools && localTools.claude ? localTools.claude : {};
+      const codex = localTools && localTools.codex ? localTools.codex : {};
+
+      const claudePath = document.getElementById('localClaudePath');
+      if (claudePath) claudePath.textContent = claude.path || '—';
+      const codexPath = document.getElementById('localCodexPath');
+      if (codexPath) codexPath.textContent = codex.path || '—';
+
+      const claudeBorrowProvider = localClaudeBorrowRef && localClaudeBorrowRef.indexOf('/') >= 0 ? localClaudeBorrowRef.split('/')[0] : '';
+      const activeClaudeBorrowProvider = renderOpenClawBorrowProviderSelect(
+        'localClaudeBorrowProvider',
+        isOpenClawModelBorrowableForClaude,
+        '（可选：借用 OpenClaw 供应商）',
+        claudeBorrowProvider
+      );
+      if (claudeBorrowProvider && !activeClaudeBorrowProvider) localClaudeBorrowRef = '';
+      localClaudeBorrowRef = renderOpenClawBorrowModelSelect(
+        'localClaudeBorrowProvider',
+        'localClaudeBorrowModel',
+        isOpenClawModelBorrowableForClaude,
+        localClaudeBorrowRef,
+        '（先选供应商）'
+      );
+      const claudeModel = document.getElementById('localClaudeModel');
+      if (claudeModel) claudeModel.value = claude.model || '';
+      const claudeBaseUrl = document.getElementById('localClaudeBaseUrl');
+      if (claudeBaseUrl) claudeBaseUrl.value = claude.baseUrl || '';
+      const claudeSonnet = document.getElementById('localClaudeSonnetModel');
+      if (claudeSonnet) claudeSonnet.value = claude.defaultSonnetModel || '';
+      const claudeOpus = document.getElementById('localClaudeOpusModel');
+      if (claudeOpus) claudeOpus.value = claude.defaultOpusModel || '';
+
+      if (claude.error) {
+        setLocalToolStatus('localClaudeStatus', 'Claude 设置读取失败：' + claude.error, true);
+      } else if (!claude.exists) {
+        setLocalToolStatus('localClaudeStatus', '尚未发现 ~/.claude/settings.json；首次保存时会自动创建。', false);
+      } else {
+        setLocalToolStatus('localClaudeStatus', '保存到用户级 ~/.claude/settings.json；通常影响后续新开会话。', false);
+      }
+
+      const codexModel = document.getElementById('localCodexModel');
+      if (codexModel) codexModel.value = codex.model || '';
+      const codexReasoning = document.getElementById('localCodexReasoningEffort');
+      if (codexReasoning) codexReasoning.value = codex.reasoningEffort || '';
+      const codexBorrowProvider = localCodexBorrowRef && localCodexBorrowRef.indexOf('/') >= 0 ? localCodexBorrowRef.split('/')[0] : '';
+      const activeCodexBorrowProvider = renderOpenClawBorrowProviderSelect(
+        'localCodexBorrowProvider',
+        isOpenClawModelBorrowableForCodex,
+        '（可选：借用 OpenClaw 供应商）',
+        codexBorrowProvider
+      );
+      if (codexBorrowProvider && !activeCodexBorrowProvider) localCodexBorrowRef = '';
+      localCodexBorrowRef = renderOpenClawBorrowModelSelect(
+        'localCodexBorrowProvider',
+        'localCodexBorrowModel',
+        isOpenClawModelBorrowableForCodex,
+        localCodexBorrowRef,
+        '（先选供应商）'
+      );
+
+      const providers = Array.isArray(codex.providers) ? codex.providers.filter((p) => p && p.key) : [];
+      const sel = document.getElementById('localCodexProvider');
+      if (sel) {
+        const currentKey = codex.provider || '';
+        const merged = providers.slice();
+        if (currentKey && !merged.some((p) => p.key === currentKey)) {
+          merged.unshift({
+            key: currentKey,
+            name: codex.providerName || currentKey,
+            baseUrl: codex.baseUrl || '',
+            wireApi: codex.wireApi || '',
+            envKey: '',
+          });
+        }
+        if (localCodexBorrowRef) {
+          const borrowModel = getOpenClawModelByRef(localCodexBorrowRef);
+          const borrowProvider = borrowModel ? getOpenClawProviderByName(borrowModel.provider) : null;
+          if (borrowProvider && borrowProvider.name && !merged.some((p) => p.key === borrowProvider.name)) {
+            merged.unshift({
+              key: borrowProvider.name,
+              name: borrowProvider.name,
+              baseUrl: borrowProvider.baseUrl || '',
+              wireApi: inferCodexWireApiFromOpenClaw(borrowModel, borrowProvider),
+              envKey: '',
+            });
+          }
+        }
+        sel.innerHTML = merged.length
+          ? merged.map((p) => {
+              const label = p.name && p.name !== p.key ? (p.key + ' · ' + p.name) : p.key;
+              return '<option value="' + escAttr(p.key) + '">' + escHtml(label) + '</option>';
+            }).join('')
+          : '<option value="">（未识别到 provider）</option>';
+        if (currentKey && merged.some((p) => p.key === currentKey)) sel.value = currentKey;
+        else if (merged.length) sel.value = merged[0].key;
+        else sel.value = '';
+      }
+
+      const providerName = document.getElementById('localCodexProviderName');
+      const baseUrl = document.getElementById('localCodexBaseUrl');
+      const wireApi = document.getElementById('localCodexWireApi');
+      if (providerName) providerName.value = codex.providerName || '';
+      if (baseUrl) baseUrl.value = codex.baseUrl || '';
+      if (wireApi) wireApi.value = codex.wireApi || '';
+      syncLocalCodexProviderFieldsFromSelection();
+      if (localClaudeBorrowRef) applyLocalClaudeBorrowSelection();
+      if (localCodexBorrowRef) applyLocalCodexBorrowSelection();
+    }
+
+    async function saveLocalClaudeSettings() {
+      setLoading('saveClaudeBtn', true);
+      try {
+        const body = {
+          openclawModelRef: localClaudeBorrowRef,
+          model: document.getElementById('localClaudeModel').value,
+          baseUrl: document.getElementById('localClaudeBaseUrl').value,
+          defaultSonnetModel: document.getElementById('localClaudeSonnetModel').value,
+          defaultOpusModel: document.getElementById('localClaudeOpusModel').value,
+        };
+        const d = await apiReq('/api/local-tools/claude', body);
+        if (d.state) renderFromState(d.state);
+        setLoading('saveClaudeBtn', false, { success: true });
+      } catch (e) {
+        setLoading('saveClaudeBtn', false, { error: true });
+        alert(e && e.message ? e.message : '保存 Claude 设置失败');
+      }
+    }
+
+    async function saveLocalCodexSettings() {
+      setLoading('saveCodexBtn', true);
+      try {
+        const body = {
+          openclawModelRef: localCodexBorrowRef,
+          provider: document.getElementById('localCodexProvider').value,
+          model: document.getElementById('localCodexModel').value,
+          reasoningEffort: document.getElementById('localCodexReasoningEffort').value,
+          providerName: document.getElementById('localCodexProviderName').value,
+          baseUrl: document.getElementById('localCodexBaseUrl').value,
+          wireApi: document.getElementById('localCodexWireApi').value,
+        };
+        const d = await apiReq('/api/local-tools/codex', body);
+        if (d.state) renderFromState(d.state);
+        setLoading('saveCodexBtn', false, { success: true });
+      } catch (e) {
+        setLoading('saveCodexBtn', false, { error: true });
+        alert(e && e.message ? e.message : '保存 Codex 设置失败');
+      }
+    }
     
     function syncThinkingRow() {
       const on = document.getElementById('thinkingEnabled').value === 'on';
@@ -2109,10 +4616,23 @@
         btn.classList.add('btn-error');
         setTimeout(() => { btn.innerHTML = old; btn.classList.remove('btn-error'); }, 2200);
       } else {
-        btn.innerHTML = '✓ ' + (outcome.success || '');
+        btn.innerHTML = outcome.success === true ? '✓' : ('✓ ' + (outcome.success || ''));
         btn.classList.add('success');
         setTimeout(() => { btn.innerHTML = old; btn.classList.remove('success'); }, 2000);
       }
+    }
+
+    /**
+     * 顶栏/表单按钮很多并不会被 refresh() 重建；先手动恢复为原始文案，再补一次 flash，
+     * 否则 success 类会一直留在旧 DOM 上，看起来像“永久打勾”。
+     */
+    function restoreBtnAndFlash(btnId, outcome) {
+      const btn = document.getElementById(btnId);
+      if (!btn) return;
+      if (btn.dataset.oldText) btn.innerHTML = btn.dataset.oldText;
+      btn.disabled = false;
+      btn.classList.remove('success', 'btn-error');
+      flashBtn(btnId, outcome);
     }
 
     /** outcome: { success: true } 仅 ✓ | { success: '短文案' } 为 ✓+文案 | { error: true } | 省略则仅恢复按钮 */
@@ -2194,7 +4714,15 @@
     }
     
     function renderFromState(s) {
+      if (!s) return;
       state = s;
+      
+      const vi = document.getElementById('validatingIndicator');
+      if (vi) {
+        if (s.configValidating === true) vi.classList.add('active');
+        else vi.classList.remove('active');
+      }
+      
       const plh = document.getElementById('pageLoadHint');
       if (plh) plh.style.display = 'none';
       const alertBar = document.getElementById('topAlertBar');
@@ -2259,6 +4787,7 @@
           '<p class="overview-path">' + escHtml(pm.sessionsPath != null && String(pm.sessionsPath) !== '' ? String(pm.sessionsPath) : '—') + '</p>';
         fetchOpenclawVersionCheck(false);
       }
+      renderLocalToolSettings(state.localTools || {});
       if(state.reasoningDisplay === 'on' || state.reasoningDisplay === 'off') document.getElementById('reasoningDisplay').value = state.reasoningDisplay;
       if(state.elevatedDefault) document.getElementById('elevatedDefault').value = state.elevatedDefault;
       const previews = (state.sessionPreviews && state.sessionPreviews.length)
@@ -2346,7 +4875,10 @@
             ? `<span class="library-test-badge library-test-badge--muted" id="${mtbId(r)}" aria-live="polite">—</span>`
             : '';
           const btnThree = `<div class="library-model-actions-btns">${canTtft ? `<button type="button" class="ghost btn-model-test" data-action="test-model" data-ref="${escAttr(r)}">测速</button>` : ''}${isOAuth ? '' : `<button type="button" class="ghost" onclick="prefillModel('${r}')">配置</button>`}<button type="button" class="ghost btn-library-danger" id="delBtn_${r.replace('/','_').replace('.','_')}" onclick="deleteModel('${r}')">移除</button></div>`;
-          return `<div class="library-model-card"><div class="library-model-body"><div class="library-model-head"><strong>${escHtml(m.name || m.id)}</strong><span class="think-suffix">思考 ${escHtml(thinkingTierOf(m))}</span>${m.ref === state.primary ? '<span class="badge active">默认</span>' : ''}</div><div class="library-model-meta"><div class="library-meta-row"><span class="library-meta-label">路径</span><span class="library-meta-val library-meta-val--mono">${escHtml(m.ref)}</span></div><div class="library-meta-row"><span class="library-meta-label">接口</span><span class="library-meta-val"><code>${escHtml(m.api || '—')}</code></span></div></div></div><div class="library-model-actions">${testBadge}${btnThree}</div></div>`;
+          const cwTxt = formatTokensKShort(m.contextWindow);
+          const mtTxt = formatTokensKShort(m.maxTokens);
+          const ctxOutZh = '上下文 ' + cwTxt + ' / 最大输出 ' + mtTxt;
+          return `<div class="library-model-card"><div class="library-model-body"><div class="library-model-head"><strong>${escHtml(m.name || m.id)}</strong><span class="think-suffix">思考 ${escHtml(thinkingTierOf(m))}</span>${m.ref === state.primary ? '<span class="badge active">默认</span>' : ''}</div><div class="library-model-ctxout-row"><span class="ctx-out-suffix" title="上下文窗口与单次最大输出 token 规模（来自配置，仅供参考）">${escHtml(ctxOutZh)}</span></div><div class="library-model-meta"><div class="library-meta-row"><span class="library-meta-label">路径</span><span class="library-meta-val library-meta-val--mono">${escHtml(m.ref)}</span></div><div class="library-meta-row"><span class="library-meta-label">接口</span><span class="library-meta-val"><code>${escHtml(m.api || '—')}</code></span></div></div></div><div class="library-model-actions">${testBadge}${btnThree}</div></div>`;
         }).join('');
         return `<details class="collapsible library-provider"><summary><div class="prov-summary-row"><div class="prov-head"><span class="prov-name">${escHtml(g.provider)}</span><span class="prov-meta">${escHtml(metaLine)}</span></div>${fetchModelsBtn}</div></summary><div class="collapsible-content">${provBar}<div class="library-models">${modelsHtml}</div></div></details>`;
       }).join('') || '<p class="library-empty">暂无配置</p>';
@@ -2519,13 +5051,15 @@
       });
     }
 
-    function showToast(msg) {
+    function showToast(msg, holdMs) {
       const el = document.getElementById('toastMini');
       if (!el) return;
       el.textContent = msg;
       el.style.display = 'block';
       if (showToast._t) clearTimeout(showToast._t);
-      showToast._t = setTimeout(function () { el.style.display = 'none'; }, 1800);
+      var ms = holdMs != null ? Number(holdMs) : 1800;
+      if (!isFinite(ms) || ms < 800) ms = 1800;
+      showToast._t = setTimeout(function () { el.style.display = 'none'; }, ms);
     }
 
     function loadModelTestCacheMap() {
@@ -2731,6 +5265,22 @@
       if (!el || el.dataset.usageDayDelegated === '1') return;
       el.dataset.usageDayDelegated = '1';
       el.addEventListener('click', function (ev) {
+        var tgt = ev.target;
+        if (tgt && tgt.closest) {
+          var sessBtn = tgt.closest('.ocma-usage-session-toggle');
+          if (sessBtn && el.contains(sessBtn)) {
+            var root = sessBtn.parentElement;
+            var wrap = sessBtn.nextElementSibling;
+            if (root && wrap && wrap.classList.contains('ocma-usage-session-list-wrap')) {
+              var open = root.classList.toggle('is-open');
+              sessBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+              if (open) wrap.removeAttribute('hidden');
+              else wrap.setAttribute('hidden', '');
+            }
+            ev.preventDefault();
+            return;
+          }
+        }
         var cur = ev.target;
         while (cur && cur !== el) {
           if (cur.nodeType === 1 && cur.getAttribute && cur.hasAttribute('data-usage-days')) {
@@ -3168,17 +5718,17 @@
               : '';
           return '<div class="ocma-usage-session-row">' + head + meta + detBlock + '</div>';
         }).join('');
-        var more =
-          allSess.length > k.length
-            ? '（接口共返回 ' + escHtml(String(allSess.length)) + ' 条，下列展示前 ' + escHtml(String(k.length)) + ' 条）'
-            : '（共 ' + escHtml(String(k.length)) + ' 条）';
         C =
-          '<div class="usage-section"><div class="ocma-usage-section-title">会话列表 ' +
-          '<span style="font-weight:600;color:var(--claude-muted);font-size:12px">' +
-          more +
-          '</span></div><div class="ocma-usage-session-list">' +
+          '<div class="usage-section ocma-usage-session-collapsible">' +
+          '<button type="button" class="ocma-usage-session-toggle" aria-expanded="false" title="展开或收起各会话用量明细">' +
+          '<span class="ocma-usage-session-toggle-chevron" aria-hidden="true">▸</span>' +
+          '<span class="ocma-usage-session-toggle-text">' +
+          '<span class="ocma-usage-section-title ocma-usage-session-toggle-label">会话列表</span>' +
+          '</span></button>' +
+          '<div class="ocma-usage-session-list-wrap" hidden>' +
+          '<div class="ocma-usage-session-list">' +
           s +
-          '</div></div>';
+          '</div></div></div>';
       }
       return (
         errBox +
@@ -3783,6 +6333,44 @@
       }
     }
 
+    function initMgmtPanels() {
+      bindMgmtCronCardActions();
+      bindMgmtSkillRowActions();
+      bindMgmtAgentCardActions();
+      var tb = document.getElementById('mgmtTasksRefreshBtn');
+      if (tb) tb.addEventListener('click', function () { loadMgmtTasks(true); });
+      var sb = document.getElementById('mgmtSkillsRefreshBtn');
+      if (sb) sb.addEventListener('click', function () { loadMgmtSkills(true); });
+      var ab = document.getElementById('mgmtAgentsRefreshBtn');
+      if (ab) ab.addEventListener('click', function () { loadMgmtAgents(true); });
+      var ac = document.getElementById('mgmtAgentsCreateBtn');
+      if (ac) {
+        ac.addEventListener('click', function () {
+          var defWs = window._mgmtAgentsCreateDefaultWs || '';
+          var name = window.prompt('新智能体显示名称（网关会规范化为 id；不可使用 main）：');
+          if (name == null) return;
+          name = String(name).trim();
+          if (!name) return;
+          var ws = window.prompt('工作区目录（绝对路径或 ~/…）：', defWs);
+          if (ws == null) return;
+          ws = String(ws).trim();
+          if (!ws) return;
+          applyInlineButtonLoading(ac, true);
+          mgmtPostJson('/api/mgmt/agents/create', { name: name, workspace: ws })
+            .then(function (d) {
+              if (!d || !d.ok) applyInlineButtonLoading(ac, false, { error: true });
+              else {
+                applyInlineButtonLoading(ac, false, { success: true });
+                loadMgmtAgents(true);
+              }
+            })
+            .catch(function () {
+              applyInlineButtonLoading(ac, false, { error: true });
+            });
+        });
+      }
+    }
+
     function isHomeUsageCardOpen() {
       var det = document.getElementById('homeUsageCard');
       return !!(det && det.open);
@@ -3795,6 +6383,20 @@
       try {
         const d = await apiReq('/api/state');
         renderFromState(d.state);
+        
+        // 核心优化：如果是手动同步，这些次要列表改在后台静默加载，不阻塞同步回执
+        if (opts.isManualSync === true) {
+           setTimeout(() => {
+             loadBackupListFromApi();
+             var activeTab = getActiveTabContentId();
+             if (activeTab) refreshMgmtPanelIfNeeded(activeTab);
+           }, 50);
+        } else {
+           loadBackupListFromApi();
+           var activeTab = getActiveTabContentId();
+           if (activeTab) refreshMgmtPanelIfNeeded(activeTab);
+        }
+
         if (!skipUsageForSync) {
           if (opts.usageForce) {
             await loadUsageSnapshot();
@@ -3802,7 +6404,6 @@
             await loadUsageSnapshot({ fromCacheOnly: true });
           }
         }
-        loadBackupListFromApi();
         return true;
       } catch(e) {
         const plh = document.getElementById('pageLoadHint');
@@ -3827,7 +6428,8 @@
     async function manualSync() {
       setLoading('syncBtn', true);
       try {
-        const ok = await refresh({ usageForce: true, skipUsageWhenUsageCollapsed: true });
+        // 核心优化：不再强制 usageForce: true，改用后台已计算好的缓存
+        const ok = await refresh({ usageForce: false, skipUsageWhenUsageCollapsed: true, isManualSync: true });
         if (ok) setLoading('syncBtn', false, { success: true });
         else setLoading('syncBtn', false, { error: true });
       } catch(e) {
@@ -3836,10 +6438,26 @@
     }
 
     async function saveSelection() {
-      setLoading('saveBtn', true);
+      const btn = document.getElementById('saveBtn');
+      // 手动设置 loading（因为 refresh 后旧按钮会被替换，setLoading 可能失效）
+      if (btn) {
+        btn.dataset.oldText = btn.innerHTML;
+        btn.innerHTML = '<div class="loading-icon"></div>';
+        btn.disabled = true;
+        btn.classList.remove('success', 'btn-error');
+      }
       try {
         await applyFullDeploy();
-        setLoading('saveBtn', false, { success: true });
+        // 先打勾（此时 DOM 还在）
+        if (btn) {
+          btn.innerHTML = '✓';
+          btn.classList.add('success');
+        }
+        // 延迟刷新：等用户看到打勾，同时等网关完全恢复
+        setTimeout(async () => {
+          await refresh();
+          restoreBtnAndFlash('saveBtn', { success: true });
+        }, 2000);
       } catch (e) {
         setLoading('saveBtn', false, { error: true });
         alert(e && e.message ? e.message : '应用失败：请检查各会话推理/提权是否为「跟随全局」或具体值后重试');
@@ -3939,14 +6557,29 @@
     }
     
     async function addModel() {
-      setLoading('addBtn', true);
+      const btn = document.getElementById('addBtn');
+      if (btn) {
+        btn.dataset.oldText = btn.innerHTML;
+        btn.innerHTML = '<div class="loading-icon"></div>';
+        btn.disabled = true;
+        btn.classList.remove('success', 'btn-error');
+      }
       try {
         const b = { provider: document.getElementById('provider').value, baseUrl: document.getElementById('baseUrl').value, apiKey: document.getElementById('apiKey').value, auth: document.getElementById('auth').value, api: document.getElementById('api').value, modelId: document.getElementById('modelId').value, modelName: document.getElementById('modelName').value, thinkingEnabled: document.getElementById('thinkingEnabled').value === 'on', thinkingValue: document.getElementById('thinkingValue').value, inputs: ['text'], contextWindow: parseInt(document.getElementById('contextWindow').value || 200000), maxTokens: parseInt(document.getElementById('maxTokens').value || 32768, 10) };
         await apiReq('/api/model', b);
         // 与顶栏「应用」一致：全局路由 + 各会话写盘 + 重启网关（电报等渠道才与磁盘一致）
         await applyFullDeploy();
-        setLoading('addBtn', false, { success: '已部署' });
-        cancelEdit();
+        // 先打勾
+        if (btn) {
+          btn.innerHTML = '✓ 已部署';
+          btn.classList.add('success');
+        }
+        // 延迟刷新，刷新完成后再恢复按钮
+        setTimeout(async () => {
+          await refresh();
+          restoreBtnAndFlash('addBtn', { success: '已部署' });
+          cancelEdit();  // 刷新后再切回原状
+        }, 2000);
       } catch (e) {
         setLoading('addBtn', false, { error: true });
         if (e && e.message) alert(e.message);
@@ -4117,6 +6750,7 @@
         config_load: '能否成功读取磁盘上的 openclaw.json。失败则配置状态无法构建。',
         config_validate: '执行 openclaw config validate：结构与 CLI 规则（诊断每次重新跑，不使用页面缓存）。',
         gateway: '综合 OPENCLAW_GATEWAY_HEALTH_URL、systemctl、ss 端口等，判断网关是否被判定为在线。',
+        summary_model: '检查 lossless-claw 的 summaryModel：是否已配置、是否为 provider/model、供应商与模型是否存在，以及当前供应商 probe 是否通过。',
         systemd: '本机 systemd 中网关服务单元是否为 active（仅当 systemctl 可用时出现此项）。',
         port_18789: '用 ss 查看本机是否监听 18789；仅在网关已被判离线时出现，用于辅助排查进程是否启动。',
         gateway_health_url: '请求环境变量 OPENCLAW_GATEWAY_HEALTH_URL 配置的地址（仅当已设置时出现）。',
@@ -4209,47 +6843,101 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeProbeDetailModal();
     });
-    
+
+    function probeCacheHint(d) {
+      const c = d && d.cache;
+      if (!c || typeof c !== 'object') return '';
+      const bits = [];
+      if (c.source === 'cache') bits.push('缓存');
+      if (c.entrySource === 'scheduled') bits.push('自动诊断');
+      if (c.entrySource === 'manual') bits.push('手动诊断');
+      if (Number.isFinite(Number(c.ageMs))) {
+        const ageMs = Math.max(0, Number(c.ageMs));
+        if (ageMs < 60000) bits.push(Math.round(ageMs / 1000) + 's 前');
+        else if (ageMs < 3600000) bits.push(Math.round(ageMs / 60000) + 'm 前');
+        else bits.push((ageMs / 3600000).toFixed(1) + 'h 前');
+      } else if (c.cachedAt) {
+        bits.push(formatCheckedAtLocal(c.cachedAt));
+      }
+      return bits.length ? (' · ' + bits.join(' · ')) : '';
+    }
+
+    function renderProbeReport(d) {
+      lastProbeReport = d;
+      const detailBtn = document.getElementById('probeDetailOpenBtn');
+      if (detailBtn) {
+        const canDetail = (d.checks && d.checks.length) || (d.results && Object.keys(d.results).length);
+        detailBtn.disabled = !canDetail;
+      }
+      const summary = document.getElementById('probeSummary');
+      const summaryMeta = document.getElementById('probeSummaryMeta');
+      const abn = document.getElementById('probeAbnormal');
+      if (!summary || !abn) return;
+      const ts = d.timestamp || '';
+      const cacheHint = probeCacheHint(d);
+      const sub = (p, t) => `${p}/${t} 项通过 · ${ts}${cacheHint}`;
+      if (d.checks && d.checks.length) {
+        const s = d.summary || {};
+        const failed = d.checks.filter((c) => !c.ok && !c.optional);
+        const p = s.passed != null ? s.passed : d.checks.filter((c) => c.ok).length;
+        const t = s.total != null ? s.total : d.checks.length;
+        if (failed.length === 0) {
+          summary.innerHTML = '<div class="status-dot"></div><span class="probe-summary-main">诊断通过</span>';
+          if (summaryMeta) summaryMeta.textContent = sub(p, t);
+          abn.innerHTML = '';
+        } else {
+          summary.innerHTML = '<div class="status-dot error"></div><span class="probe-summary-main">存在问题</span>';
+          if (summaryMeta) summaryMeta.textContent = sub(p, t);
+          abn.innerHTML = failed.map((c) => (
+            '<div class="probe-pill" title="' + escAttr(c.detail || '') + '">' + escHtml(c.label) + '</div>'
+          )).join('');
+        }
+      } else {
+        const abnormals = Object.entries(d.results || {}).filter(([_, ok]) => !ok);
+        if (abnormals.length === 0) {
+          summary.innerHTML = '<div class="status-dot"></div><span class="probe-summary-main">系统联通正常</span>';
+          if (summaryMeta) summaryMeta.textContent = `${ts}${cacheHint}`;
+          abn.innerHTML = '';
+        } else {
+          summary.innerHTML = '<div class="status-dot error"></div><span class="probe-summary-main">连接异常</span>';
+          if (summaryMeta) summaryMeta.textContent = `${ts}${cacheHint}`;
+          abn.innerHTML = abnormals.map(([p]) => '<div class="probe-pill">' + escHtml(p) + '</div>').join('');
+        }
+      }
+    }
+
+    async function loadProbeReport(opts) {
+      opts = opts || {};
+      const force = opts.force === true;
+      if (force) {
+        const d = await apiReq('/api/probe', { force: true });
+        renderProbeReport(d);
+        return d;
+      }
+      const d = await apiReq('/api/probe');
+      renderProbeReport(d);
+      return d;
+    }
+
     async function runProbe() {
       setLoading('probeBtn', true);
       try {
-        const d = await apiReq('/api/probe', {});
-        lastProbeReport = d;
-        const detailBtn = document.getElementById('probeDetailOpenBtn');
-        if (detailBtn) {
-          const canDetail = (d.checks && d.checks.length) || (d.results && Object.keys(d.results).length);
-          detailBtn.disabled = !canDetail;
-        }
-        const summary = document.getElementById('probeSummary');
-        const abn = document.getElementById('probeAbnormal');
-        const ts = d.timestamp || '';
-        const sub = (p, t) => ` <small style="font-weight:500;color:var(--claude-muted)">（${p}/${t} 项通过 · ${ts}）</small>`;
-        if (d.checks && d.checks.length) {
-          const s = d.summary || {};
-          const failed = d.checks.filter((c) => !c.ok && !c.optional);
-          const p = s.passed != null ? s.passed : d.checks.filter((c) => c.ok).length;
-          const t = s.total != null ? s.total : d.checks.length;
-          if (failed.length === 0) {
-            summary.innerHTML = '<div class="status-dot"></div> 诊断通过' + sub(p, t);
-            abn.innerHTML = '';
-          } else {
-            summary.innerHTML = '<div class="status-dot error"></div> 存在问题' + sub(p, t);
-            abn.innerHTML = failed.map((c) => (
-              '<div class="probe-pill" title="' + escAttr(c.detail || '') + '">' + escHtml(c.label) + '</div>'
-            )).join('');
-          }
-        } else {
-          const abnormals = Object.entries(d.results || {}).filter(([_, ok]) => !ok);
-          if (abnormals.length === 0) {
-            summary.innerHTML = `<div class="status-dot"></div> 系统联通正常 <small style="font-weight:400;color:var(--claude-muted)">(${ts})</small>`;
-            abn.innerHTML = '';
-          } else {
-            summary.innerHTML = `<div class="status-dot error"></div> 连接异常 <small style="font-weight:400;color:var(--claude-muted)">(${ts})</small>`;
-            abn.innerHTML = abnormals.map(([p]) => '<div class="probe-pill">' + escHtml(p) + '</div>').join('');
-          }
-        }
+        await loadProbeReport({ force: true });
         setLoading('probeBtn', false);
-      } catch(e) { setLoading('probeBtn', false, { error: true }); }
+      } catch(e) {
+        setLoading('probeBtn', false, { error: true });
+      }
+    }
+
+    async function loadProbeSummaryFromCache() {
+      try {
+        await loadProbeReport({ force: false });
+      } catch (e) {
+        const summary = document.getElementById('probeSummary');
+        if (summary) {
+          summary.innerHTML = '<div class="status-dot error"></div> 诊断缓存不可用';
+        }
+      }
     }
     ['p', 'f1', 'f2'].forEach(initListeners);
     document.getElementById('thinkingEnabled').addEventListener('change', syncThinkingRow);
@@ -4270,12 +6958,15 @@
     })();
     initGatewayLogPanel();
     initBackupPanel();
+    initMgmtPanels();
+    prefetchMgmtPanelsInBackground();
     initLocalMachineInfoPanel();
     ensureOpenclawVersionPoll();
     wireHomeUsageCardPoll();
     ensureUsagePollStarted();
     wireUsageVisibilityRefresh();
     refresh();
+    loadProbeSummaryFromCache();
   </script>
 </body>
 </html>

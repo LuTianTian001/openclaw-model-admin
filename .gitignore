@@ -4,6 +4,9 @@ __pycache__/
 .env
 admin-prefs.json
 *.bak
+*.bak.*
+*.orig
+probe-cache.json
 sessions.json.bak.*
 .idea/
 .vscode/
